@@ -1,6 +1,7 @@
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 //use rand_core::{OsRng, RngCore};
+use sha3::{Digest, Sha3_256};
 
 use crate::hasher::Hasher;
 
@@ -53,35 +54,87 @@ impl<H: Hasher> Params<H> {
     fn compute_ladders(
         &mut self,
         p_seed: Vec<u8>,
-        msg: Vec<u8>,
+        msg: Option<Vec<u8>>,
         points: Vec<u8>,
-        chains: Vec<Vec<u8>>,
+        chains: Option<Vec<Vec<u8>>>,
         sign: bool,
     ) -> Vec<u8> {
         let start: Vec<u8>;
-        if msg.len() != 0 {
-            // TODO: check nil vs. length==0?
-            start = self.msg_hash_and_compute_checksum(msg);
+        if msg.is_some() {
+            start = self.msg_hash_and_compute_checksum(msg.unwrap());
         } else {
             start = vec![0u8; self.total as usize];
         }
 
         let random_elements = compute_random_elements(self.n, &p_seed, &mut self.prfHash);
+        let mut value = vec![0u8; self.n as usize];
 
-        vec![0u8; 0]
+        let mut outputs: Vec<u8>;
+        let has_chains = chains.is_some();
+
+        if has_chains {
+            outputs = chains.unwrap()[(W - 1) as usize].clone();
+        } else {
+            outputs = vec![0u8; (self.n * self.total) as usize];
+        }
+
+        let mut t_hasher = Sha3_256::new();
+
+        let mut begin = 0;
+        let mut end = 0;
+
+        for i in 0..self.total {
+            let from = (i * self.n) as usize;
+            let to = ((i + 1) * self.n) as usize;
+            value.clone_from_slice(&points[from..to]);
+
+            if sign {
+                begin = 0;
+                end = start[i as usize];
+            } else {
+                begin = start[i as usize];
+                end = (W - 1) as u8;
+            }
+
+            value = self.compute_chain(&p_seed, &value, &random_elements, begin, end);
+            // TODO: if GENERATE()
+
+            if !has_chains {
+                outputs[from..to].clone_from_slice(&value);
+            }
+
+            if !sign {
+                if parity(&value) {
+                    Digest::update(&mut t_hasher, &value);
+                }
+            }
+        }
+
+        if !sign {
+            let tweak = t_hasher.finalize();
+            let mut t_hasher = Sha3_256::new();
+            Digest::update(&mut t_hasher, &p_seed);
+            Digest::update(&mut t_hasher, &tweak);
+            Digest::update(&mut t_hasher, &outputs);
+            return t_hasher.finalize().to_vec();
+        }
+
+        outputs
     }
 
     // compute_chain returns the result of c(input, random_elements) iterated total times.
     fn compute_chain(
         &mut self,
-        total: u64,
+        p_seed: &[u8],
         input: &[u8],
-        random_elements: Vec<Vec<u8>>,
+        random_elements: &Vec<Vec<u8>>,
+        begin: u8,
+        end: u8,
     ) -> Vec<u8> {
         let mut prev = vec![0u8; self.n as usize];
         prev.clone_from_slice(input);
 
-        for i in 1..total {
+        for i in begin..end {
             let preimage: Vec<u8> = prev
                 .iter()
                 .zip(random_elements[i as usize].iter())
@@ -119,6 +172,19 @@ fn compute_random_elements<H: Hasher>(n: u64, p_seed: &[u8], prfHasher: &mut H) 
     random_elements
 }
 
+fn parity(value: &[u8]) -> bool {
+    let mut count = 0;
+    for n in value.iter() {
+        let mut v: u8 = *n;
+        v ^= v >> 4;
+        v ^= v >> 2;
+        v ^= v >> 1;
+        count += (v & 1) as i8
+    }
+
+    count % 2 == 1
+}
+
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
@@ -131,6 +197,8 @@ mod tests {
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
+        let p_seed = vec![88u8; 32];
+
         let mut random_elements = vec![vec![0u8; 32]; total];
         for i in 0..total {
             let mut x = vec![0u8; 32];
@@ -138,7 +206,7 @@ mod tests {
             random_elements[i] = x;
         }
 
-        let res = params.compute_chain(16, &input, random_elements);
+        let res = params.compute_chain(&p_seed, &input, &random_elements, 0, total as u8);
         assert!(res.len() == input.len());
         println!("{:?}", res);
     }
