@@ -9,9 +9,9 @@ use crate::hasher::Hasher;
 pub const W: u32 = 256;
 
 // Secret and public seed size
-pub const SeedSize: u32 = 32;
+pub const SEED_SIZE: u32 = 32;
 
-pub const MaxMsgSize: u32 = 254;
+pub const MAX_MSG_SIZE: u32 = 254;
 
 pub struct Params<H: Hasher> {
     // security parameter; size of secret key and ladder points (in bytes)
@@ -20,16 +20,17 @@ pub struct Params<H: Hasher> {
     // size of message to be signed (after hashing) (in bytes)
     m: u64,
 
-    prfHash: H,
-    msgHash: H,
+    // TODO: just make these generic parameters
+    prf_hash: H,
+    msg_hash: H,
 
     // total number of ladders
     total: u64,
 }
 
 impl<H: Hasher> Params<H> {
-    fn new(n: u64, m: u64, prfHash: H, msgHash: H) -> Option<Params<H>> {
-        if m < 1 || m > MaxMsgSize as u64 {
+    fn new(n: u64, m: u64, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
+        if m < 1 || m > MAX_MSG_SIZE as u64 {
             // TODO: return error
             return None;
         }
@@ -47,8 +48,8 @@ impl<H: Hasher> Params<H> {
         Some(Params {
             n: n,
             m: m,
-            prfHash: prfHash,
-            msgHash: msgHash,
+            prf_hash: prf_hash,
+            msg_hash: msg_hash,
             total: m + checksum_ladders,
         })
     }
@@ -79,7 +80,7 @@ impl<H: Hasher> Params<H> {
             start = vec![0u8; self.total as usize];
         }
 
-        let random_elements = compute_random_elements(self.n, &p_seed, &mut self.prfHash);
+        let random_elements = compute_random_elements::<H>(self.n, &p_seed);
         let mut value = vec![0u8; self.n as usize];
 
         let mut outputs: Vec<u8>;
@@ -93,8 +94,8 @@ impl<H: Hasher> Params<H> {
 
         let mut t_hasher = Sha3_256::new();
 
-        let mut begin = 0;
-        let mut end = 0;
+        let mut begin;
+        let mut end;
 
         for i in 0..self.total {
             let from = (i * self.n) as usize;
@@ -183,7 +184,7 @@ fn checksum(msg: &[u8]) -> Vec<u8> {
     vec![upper, lower]
 }
 
-fn compute_random_elements<H: Hasher>(n: u64, p_seed: &[u8], prfHasher: &mut H) -> Vec<Vec<u8>> {
+fn compute_random_elements<H: Hasher>(n: u64, p_seed: &[u8]) -> Vec<Vec<u8>> {
     let mut random_elements = vec![vec![0u8; n as usize]; (W - 1) as usize];
     let mut buf = vec![0u8; H::size()];
 
