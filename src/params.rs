@@ -21,18 +21,23 @@ pub struct Params<H: Hasher> {
     m: u64,
 
     prfHash: H,
+    msgHash: H,
 
     // total number of ladders
     total: u64,
 }
 
 impl<H: Hasher> Params<H> {
-    fn new(n: u64, m: u64, prfHasher: H) -> Option<Params<H>> {
+    fn new(n: u64, m: u64, prfHash: H, msgHash: H) -> Option<Params<H>> {
         if m < 1 || m > MaxMsgSize as u64 {
+            // TODO: return error
             return None;
         }
 
-        //  if prfHasher.Size()
+        if H::size() < n as usize || H::size() < m as usize {
+            // TODO: return error
+            return None;
+        }
 
         let mut checksum_ladders = 2;
         if m == 1 {
@@ -42,13 +47,21 @@ impl<H: Hasher> Params<H> {
         Some(Params {
             n: n,
             m: m,
-            prfHash: prfHasher,
+            prfHash: prfHash,
+            msgHash: msgHash,
             total: m + checksum_ladders,
         })
     }
 
     fn msg_hash_and_compute_checksum(&self, msg: Vec<u8>) -> Vec<u8> {
-        vec![0u8; 0]
+        let mut hasher = H::new();
+        let mut msg_buf = vec![0u8; H::size()];
+        let mut hashed_msg = vec![0u8; self.m as usize];
+        hasher.write(msg);
+        hasher.sum(&mut msg_buf);
+        hashed_msg[0..self.m as usize].clone_from_slice(&msg_buf[0..self.m as usize]);
+        hashed_msg.append(&mut checksum(&hashed_msg));
+        hashed_msg
     }
 
     fn compute_ladders(
@@ -157,6 +170,19 @@ impl<H: Hasher> Params<H> {
     }
 }
 
+fn checksum(msg: &[u8]) -> Vec<u8> {
+    let mut sum = ((W - 1) as u16) * (msg.len() as u16);
+    for n in msg.iter() {
+        sum -= *n as u16;
+    }
+    if msg.len() == 1 {
+        return vec![sum as u8];
+    }
+    let upper = ((sum & 0x0) >> 8) as u8;
+    let lower = sum as u8;
+    vec![upper, lower]
+}
+
 fn compute_random_elements<H: Hasher>(n: u64, p_seed: &[u8], prfHasher: &mut H) -> Vec<Vec<u8>> {
     let mut random_elements = vec![vec![0u8; n as usize]; (W - 1) as usize];
     let mut buf = vec![0u8; H::size()];
@@ -193,7 +219,7 @@ mod tests {
 
     #[test]
     fn compute_chain() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new()).unwrap();
+        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
