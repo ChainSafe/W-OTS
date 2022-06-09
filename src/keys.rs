@@ -6,7 +6,7 @@ use rand_core::{OsRng, RngCore};
 // Size of WOTS+ public keys
 pub const PK_SIZE: usize = 32;
 
-pub struct PrivateKey<H: Hasher> {
+pub struct Key<H: Hasher> {
     seed: [u8; SEED_SIZE],
     p_seed: [u8; SEED_SIZE],
     chains: Option<Vec<Vec<u8>>>,
@@ -15,7 +15,7 @@ pub struct PrivateKey<H: Hasher> {
     params: Params<H>,
 }
 
-impl<H: Hasher> PrivateKey<H> {
+impl<H: Hasher> Key<H> {
     fn new(params: Params<H>) -> Self {
         let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
@@ -24,13 +24,34 @@ impl<H: Hasher> PrivateKey<H> {
 
         let sk = calculate_secret_key(&params, &seed);
 
-        PrivateKey {
+        Key {
             seed: seed,
             p_seed: p_seed,
             chains: None,
             secret_key: sk,
             public_key: None,
             params: params,
+        }
+    }
+
+    fn generate(&mut self) -> Result<(), WotsError> {
+        if self.chains.is_some() {
+            return Ok(());
+        }
+
+        let p_seed = self.p_seed;
+        let res = self
+            .params
+            .compute_ladders(&p_seed, None, &self.secret_key, false, false);
+        match res {
+            Ok((public_key, chains)) => {
+                self.public_key = Some(public_key);
+                self.chains = Some(chains);
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
     }
 
@@ -45,7 +66,7 @@ impl<H: Hasher> PrivateKey<H> {
             .params
             .compute_ladders(&p_seed, None, &self.secret_key, false, false);
         match res {
-            Ok(public_key) => {
+            Ok((public_key, _)) => {
                 self.public_key = Some(public_key.clone());
                 return Ok(public_key);
             }
@@ -53,6 +74,42 @@ impl<H: Hasher> PrivateKey<H> {
                 return Err(e);
             }
         }
+    }
+
+    fn sign(&mut self, msg: &[u8]) -> Result<Vec<u8>, WotsError> {
+        if self.chains.is_some() {
+            return Ok(self.fast_sign(&msg));
+        }
+
+        let p_seed = self.p_seed;
+        let res =
+            self.params
+                .compute_ladders(&p_seed, Some(msg.to_vec()), &self.secret_key, false, true);
+        let signature = match res {
+            Ok((signature, _)) => signature,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
+        Ok(self.build_signature(&signature))
+    }
+
+    fn fast_sign(&self, msg: &[u8]) -> Vec<u8> {
+        let data = self.params.msg_hash_and_compute_checksum(msg);
+        let mut sig = vec![0u8; self.params.n * self.params.total];
+        let chains = self.chains.as_ref().unwrap();
+        for i in 0..self.params.total {
+            sig[i * self.params.n..(i + 1) * self.params.n].copy_from_slice(
+                &chains[data[i] as usize][i * self.params.n..(i + 1 * self.params.n)],
+            );
+        }
+        self.build_signature(&sig)
+    }
+
+    fn build_signature(&self, sig: &[u8]) -> Vec<u8> {
+        // TODO
+        vec![0u8; 0]
     }
 }
 

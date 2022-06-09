@@ -76,11 +76,11 @@ impl<H: Hasher> Params<H> {
         })
     }
 
-    fn msg_hash_and_compute_checksum(&self, msg: Vec<u8>) -> Vec<u8> {
+    pub fn msg_hash_and_compute_checksum(&self, msg: &[u8]) -> Vec<u8> {
         let mut hasher = H::new();
         let mut msg_buf = vec![0u8; H::size()];
         let mut hashed_msg = vec![0u8; self.m as usize];
-        hasher.write(msg);
+        hasher.write(msg.to_vec());
         hasher.sum(&mut msg_buf);
         hashed_msg[0..self.m as usize].clone_from_slice(&msg_buf[0..self.m as usize]);
         hashed_msg.append(&mut checksum(&hashed_msg));
@@ -94,7 +94,7 @@ impl<H: Hasher> Params<H> {
         points: &[u8],
         generate: bool,
         sign: bool,
-    ) -> Result<Vec<u8>, WotsError> {
+    ) -> Result<(Vec<u8>, Vec<Vec<u8>>), WotsError> {
         if p_seed.len() != SEED_SIZE {
             return Err(WotsError::InvalidSeedSize);
         }
@@ -112,7 +112,7 @@ impl<H: Hasher> Params<H> {
                 if msg.len() > MAX_MSG_SIZE {
                     return Err(WotsError::InvalidMessageSize);
                 }
-                self.msg_hash_and_compute_checksum(msg)
+                self.msg_hash_and_compute_checksum(&msg)
             }
             None => vec![0u8; self.total as usize],
         };
@@ -173,11 +173,11 @@ impl<H: Hasher> Params<H> {
             Digest::update(&mut t_hasher, &p_seed);
             Digest::update(&mut t_hasher, &tweak);
             Digest::update(&mut t_hasher, &outputs);
-            return Ok(t_hasher.finalize().to_vec());
+            return Ok((t_hasher.finalize().to_vec(), chains));
         }
 
         // if signing, then return outputs (length = n * total)
-        Ok(outputs)
+        Ok((outputs, chains))
     }
 
     // compute_chain returns the result of c(input, random_elements) iterated total times.
@@ -267,7 +267,7 @@ fn parity(value: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
-    use crate::params::{Params, MAX_MSG_SIZE, SEED_SIZE};
+    use crate::params::{Params, MAX_MSG_SIZE, SEED_SIZE, W};
     use rand_core::{OsRng, RngCore};
 
     #[test]
@@ -330,7 +330,8 @@ mod tests {
         let res = params
             .compute_ladders(&p_seed, None, &points, true, false)
             .unwrap();
-        assert_eq!(res.len(), Blake2bHasher::size());
+        assert_eq!(res.0.len(), Blake2bHasher::size());
+        assert_eq!(res.1.len(), W);
     }
 
     #[test]
@@ -342,7 +343,7 @@ mod tests {
         let res = params
             .compute_ladders(&p_seed, None, &points, false, false)
             .unwrap();
-        assert_eq!(res.len(), Blake2bHasher::size());
+        assert_eq!(res.0.len(), Blake2bHasher::size());
     }
 
     #[test]
@@ -355,7 +356,7 @@ mod tests {
         let res = params
             .compute_ladders(&p_seed, Some(msg), &points, false, false)
             .unwrap();
-        assert_eq!(res.len(), Blake2bHasher::size());
+        assert_eq!(res.0.len(), Blake2bHasher::size());
     }
 
     #[test]
@@ -368,6 +369,6 @@ mod tests {
         let res = params
             .compute_ladders(&p_seed, Some(msg), &points, false, true)
             .unwrap();
-        assert_eq!(res.len(), params.n * params.total);
+        assert_eq!(res.0.len(), params.n * params.total);
     }
 }
