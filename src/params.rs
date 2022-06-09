@@ -2,6 +2,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 //use rand_core::{OsRng, RngCore};
 use sha3::{Digest, Sha3_256};
+use std::fmt;
 
 use crate::hasher::Hasher;
 
@@ -13,6 +14,26 @@ pub const SEED_SIZE: usize = 32;
 
 pub const MAX_MSG_SIZE: usize = 254;
 
+#[derive(Debug)]
+pub enum WotsError {
+    InvalidSeedSize,
+    InvalidMessageSize,
+    InvalidPointsSize,
+}
+
+impl std::error::Error for WotsError {}
+
+impl fmt::Display for WotsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvalidSeedSize => write!(f, "invalid seed size: expected 32"),
+            InvalidMessageSize => write!(f, "invalid message size: must be smaller than 254"),
+            InvalidPointsSize => write!(f, "invalid points size for params; must be n * total"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Params<H: Hasher> {
     // security parameter; size of secret key and ladder points (in bytes)
     n: usize,
@@ -68,40 +89,35 @@ impl<H: Hasher> Params<H> {
     fn compute_ladders(
         &mut self,
         p_seed: Vec<u8>,
-        msg: Option<Vec<u8>>,
+        maybe_msg: Option<Vec<u8>>,
         points: Vec<u8>,
-        maybe_chains: Option<Vec<Vec<u8>>>,
+        //maybe_chains: Option<Vec<Vec<u8>>>, // TODO: can just pass in Option<Vec<u8>> of chains[0] instead
+        generate: bool,
         sign: bool,
-    ) -> Vec<u8> {
-        let start: Vec<u8>;
-        if msg.is_some() {
-            start = self.msg_hash_and_compute_checksum(msg.unwrap());
-        } else {
-            start = vec![0u8; self.total as usize];
+    ) -> Result<Vec<u8>, WotsError> {
+        if p_seed.len() != SEED_SIZE {
+            return Err(WotsError::InvalidSeedSize);
         }
+
+        if points.len() < (self.n * self.total) as usize {
+            return Err(WotsError::InvalidPointsSize);
+        }
+
+        let start = match maybe_msg {
+            Some(msg) => {
+                if msg.len() > MAX_MSG_SIZE {
+                    return Err(WotsError::InvalidMessageSize);
+                }
+                self.msg_hash_and_compute_checksum(msg)
+            }
+            None => vec![0u8; self.total as usize],
+        };
 
         let random_elements = compute_random_elements::<H>(self.n, &p_seed);
         let mut value = vec![0u8; self.n as usize];
 
-        let mut outputs: Vec<u8>;
-        let has_chains = maybe_chains.is_some();
-
-        let mut chains = match maybe_chains {
-            Some(chains) => {
-                outputs = chains[(W - 1) as usize].clone();
-                chains
-            }
-            None => {
-                outputs = vec![0u8; (self.n * self.total) as usize];
-                vec![vec![0u8; 0]]
-            }
-        };
-        // if has_chains {
-        //     chains = maybe_chains.unwrap();
-        //     outputs = chains[(W - 1) as usize].clone();
-        // } else {
-        //     outputs = vec![0u8; (self.n * self.total) as usize];
-        // }
+        let mut outputs = vec![0u8; self.n * self.total];
+        let mut chains = vec![vec![0u8; self.n * self.total]; W];
 
         let mut t_hasher = Sha3_256::new();
 
@@ -117,17 +133,18 @@ impl<H: Hasher> Params<H> {
                 begin = 0;
                 end = start[i as usize];
             } else {
+                // TODO: can begin just be 0 here since start will always be 0s?
                 begin = start[i as usize];
                 end = (W - 1) as u8;
             }
 
-            if !has_chains {
+            if !generate {
                 (value, _) =
-                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, has_chains);
-                outputs[from..to].clone_from_slice(&value);
+                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, false);
+                outputs[from..to].copy_from_slice(&value);
             } else {
                 let (v, intermediate_chains) =
-                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, has_chains);
+                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, true);
                 value = v;
 
                 // if generate, then copy each's levels's subsets back
@@ -152,10 +169,11 @@ impl<H: Hasher> Params<H> {
             Digest::update(&mut t_hasher, &p_seed);
             Digest::update(&mut t_hasher, &tweak);
             Digest::update(&mut t_hasher, &outputs);
-            return t_hasher.finalize().to_vec();
+            return Ok(t_hasher.finalize().to_vec());
         }
 
-        outputs
+        // if signing, then return outputs (length = n * total)
+        Ok(outputs)
     }
 
     // compute_chain returns the result of c(input, random_elements) iterated total times.
@@ -245,8 +263,38 @@ fn parity(value: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
-    use crate::params::Params;
+    use crate::params::{Params, MAX_MSG_SIZE};
     use rand_core::{OsRng, RngCore};
+
+    #[test]
+    fn new_params() {
+        let params = Params::new(32, 0, Blake2bHasher::new(), Blake2bHasher::new());
+        assert!(params.is_none());
+
+        let params = Params::new(
+            32,
+            MAX_MSG_SIZE + 1,
+            Blake2bHasher::new(),
+            Blake2bHasher::new(),
+        );
+        assert!(params.is_none());
+
+        // test PRF hash size too small
+        let params = Params::new(64, 32, Blake2bHasher::new(), Blake2bHasher::new());
+        assert!(params.is_none());
+
+        // test msg hash size too small
+        let params = Params::new(32, 64, Blake2bHasher::new(), Blake2bHasher::new());
+        assert!(params.is_none());
+
+        // test one checksum ladder
+        let params = Params::new(32, 1, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        assert_eq!(params.total, 2);
+
+        // test two checksum ladders
+        let params = Params::new(32, 2, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        assert_eq!(params.total, 4);
+    }
 
     #[test]
     fn compute_chain() {
@@ -265,7 +313,19 @@ mod tests {
 
         let (res, _) =
             params.compute_chain(&p_seed, &input, &random_elements, 0, total as u8, false);
-        assert!(res.len() == input.len());
+        assert_eq!(res.len(), input.len());
         println!("{:?}", res);
+    }
+
+    #[test]
+    fn compute_ladders_generate() {
+        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let p_seed = vec![88u8; 32];
+        let points = vec![99u8; params.n * params.total];
+
+        let res = params
+            .compute_ladders(p_seed, None, points, true, false)
+            .unwrap();
+        assert_eq!(res.len(), Blake2bHasher::size());
     }
 }

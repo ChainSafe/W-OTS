@@ -8,6 +8,7 @@ pub trait Hasher {
     fn size() -> usize;
 }
 
+#[derive(Debug)]
 pub struct Blake2bHasher {
     hasher: blake2::Blake2bVar,
 }
