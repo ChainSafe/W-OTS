@@ -19,6 +19,7 @@ pub enum WotsError {
     InvalidSeedSize,
     InvalidMessageSize,
     InvalidPointsSize,
+    MustProvideMessage,
 }
 
 impl std::error::Error for WotsError {}
@@ -29,6 +30,7 @@ impl fmt::Display for WotsError {
             InvalidSeedSize => write!(f, "invalid seed size: expected 32"),
             InvalidMessageSize => write!(f, "invalid message size: must be smaller than 254"),
             InvalidPointsSize => write!(f, "invalid points size for params; must be n * total"),
+            MustProvideMessage => write!(f, "must provide message for sign=true"),
         }
     }
 }
@@ -91,7 +93,6 @@ impl<H: Hasher> Params<H> {
         p_seed: Vec<u8>,
         maybe_msg: Option<Vec<u8>>,
         points: Vec<u8>,
-        //maybe_chains: Option<Vec<Vec<u8>>>, // TODO: can just pass in Option<Vec<u8>> of chains[0] instead
         generate: bool,
         sign: bool,
     ) -> Result<Vec<u8>, WotsError> {
@@ -101,6 +102,10 @@ impl<H: Hasher> Params<H> {
 
         if points.len() < (self.n * self.total) as usize {
             return Err(WotsError::InvalidPointsSize);
+        }
+
+        if sign && maybe_msg.is_none() {
+            return Err(WotsError::MustProvideMessage);
         }
 
         let start = match maybe_msg {
@@ -327,5 +332,43 @@ mod tests {
             .compute_ladders(p_seed, None, points, true, false)
             .unwrap();
         assert_eq!(res.len(), Blake2bHasher::size());
+    }
+
+    #[test]
+    fn compute_ladders_compute_pubkey() {
+        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let p_seed = vec![88u8; 32];
+        let points = vec![99u8; params.n * params.total];
+
+        let res = params
+            .compute_ladders(p_seed, None, points, false, false)
+            .unwrap();
+        assert_eq!(res.len(), Blake2bHasher::size());
+    }
+
+    #[test]
+    fn compute_ladders_decode() {
+        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let p_seed = vec![88u8; 32];
+        let points = vec![99u8; params.n * params.total];
+        let msg = vec![77u8; MAX_MSG_SIZE];
+
+        let res = params
+            .compute_ladders(p_seed, Some(msg), points, false, false)
+            .unwrap();
+        assert_eq!(res.len(), Blake2bHasher::size());
+    }
+
+    #[test]
+    fn compute_ladders_sign() {
+        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let p_seed = vec![88u8; 32];
+        let points = vec![99u8; params.n * params.total];
+        let msg = vec![77u8; MAX_MSG_SIZE];
+
+        let res = params
+            .compute_ladders(p_seed, Some(msg), points, false, true)
+            .unwrap();
+        assert_eq!(res.len(), params.n * params.total);
     }
 }
