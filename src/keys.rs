@@ -1,36 +1,70 @@
-pub struct PrivateKey {
-    seed: Vec<u8>,
-    //random_elements: Vec<Vec<u8>>,
+use crate::hasher::Hasher;
+use crate::params::{Params, WotsError, SEED_SIZE};
+
+use rand_core::{OsRng, RngCore};
+
+// Size of WOTS+ public keys
+pub const PK_SIZE: usize = 32;
+
+pub struct PrivateKey<H: Hasher> {
+    seed: [u8; SEED_SIZE],
+    p_seed: [u8; SEED_SIZE],
+    chains: Option<Vec<Vec<u8>>>,
+    secret_key: Vec<u8>,
+    public_key: Option<Vec<u8>>,
+    params: Params<H>,
 }
 
-impl PrivateKey {
-    fn new() -> Self {
-        let mut seed = vec![0u8; SeedSize as usize];
+impl<H: Hasher> PrivateKey<H> {
+    fn new(params: Params<H>) -> Self {
+        let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
+        let mut p_seed = [0u8; SEED_SIZE];
+        OsRng.fill_bytes(&mut p_seed);
 
-        // // TODO: SeedSize or params.n?
-        // let mut random_elements = vec![vec![0u8; SeedSize as usize]; total];
-        // for i in 0..total {
-        //     let mut x = vec![0u8; 32];
-        //     OsRng.fill_bytes(&mut x);
-        //     random_elements[i] = x;
-        // }
+        let sk = calculate_secret_key(&params, &seed);
 
         PrivateKey {
             seed: seed,
-            //random_elements: random_elements,
+            p_seed: p_seed,
+            chains: None,
+            secret_key: sk,
+            public_key: None,
+            params: params,
         }
     }
 
-    fn public_key(&self) -> PublicKey {
-        let mut pubkey = vec![vec![0u8; SeedSize as usize]];
+    fn public_key(&mut self) -> Result<Vec<u8>, WotsError> {
+        if self.public_key.is_some() {
+            let pk = self.public_key.clone().unwrap();
+            return Ok(pk);
+        }
 
-        PublicKey {
-            key: pubkey,
+        let p_seed = self.p_seed;
+        let res = self
+            .params
+            .compute_ladders(&p_seed, None, &self.secret_key, false, false);
+        match res {
+            Ok(public_key) => {
+                self.public_key = Some(public_key.clone());
+                return Ok(public_key);
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
     }
 }
 
-pub struct PublicKey {
-    key: Vec<Vec<u8>>,
+fn calculate_secret_key<H: Hasher>(params: &Params<H>, seed: &[u8]) -> Vec<u8> {
+    let mut sks = vec![0u8; params.n * params.total];
+    let mut buf = vec![0u8; H::size()];
+    for i in 0..params.total {
+        let mut hasher = H::new();
+        hasher.write(seed.to_vec());
+        hasher.write(vec![i as u8]);
+        hasher.sum(&mut buf);
+        sks[i * params.n..(i + 1) * params.n].copy_from_slice(&buf[0..params.n]);
+    }
+    sks
 }

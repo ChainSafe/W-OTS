@@ -1,12 +1,11 @@
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
-//use rand_core::{OsRng, RngCore};
 use sha3::{Digest, Sha3_256};
 use std::fmt;
 
 use crate::hasher::Hasher;
 
-// Winterhits parameter (I think)
+// Winternits parameter (I think)
 pub const W: usize = 256;
 
 // Secret and public seed size
@@ -38,7 +37,7 @@ impl fmt::Display for WotsError {
 #[derive(Debug)]
 pub struct Params<H: Hasher> {
     // security parameter; size of secret key and ladder points (in bytes)
-    n: usize,
+    pub n: usize,
 
     // size of message to be signed (after hashing) (in bytes)
     m: usize,
@@ -48,11 +47,11 @@ pub struct Params<H: Hasher> {
     msg_hash: H,
 
     // total number of ladders
-    total: usize,
+    pub total: usize,
 }
 
 impl<H: Hasher> Params<H> {
-    fn new(n: usize, m: usize, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
+    pub fn new(n: usize, m: usize, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
         if m < 1 || m > MAX_MSG_SIZE {
             // TODO: return error
             return None;
@@ -88,11 +87,11 @@ impl<H: Hasher> Params<H> {
         hashed_msg
     }
 
-    fn compute_ladders(
+    pub fn compute_ladders(
         &mut self,
-        p_seed: Vec<u8>,
+        p_seed: &[u8],
         maybe_msg: Option<Vec<u8>>,
-        points: Vec<u8>,
+        points: &[u8],
         generate: bool,
         sign: bool,
     ) -> Result<Vec<u8>, WotsError> {
@@ -268,7 +267,7 @@ fn parity(value: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
-    use crate::params::{Params, MAX_MSG_SIZE};
+    use crate::params::{Params, MAX_MSG_SIZE, SEED_SIZE};
     use rand_core::{OsRng, RngCore};
 
     #[test]
@@ -307,7 +306,7 @@ mod tests {
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
-        let p_seed = vec![88u8; 32];
+        let p_seed = vec![88u8; SEED_SIZE];
 
         let mut random_elements = vec![vec![0u8; 32]; total];
         for i in 0..total {
@@ -325,11 +324,11 @@ mod tests {
     #[test]
     fn compute_ladders_generate() {
         let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
-        let p_seed = vec![88u8; 32];
+        let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
         let res = params
-            .compute_ladders(p_seed, None, points, true, false)
+            .compute_ladders(&p_seed, None, &points, true, false)
             .unwrap();
         assert_eq!(res.len(), Blake2bHasher::size());
     }
@@ -337,11 +336,11 @@ mod tests {
     #[test]
     fn compute_ladders_compute_pubkey() {
         let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
-        let p_seed = vec![88u8; 32];
+        let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
         let res = params
-            .compute_ladders(p_seed, None, points, false, false)
+            .compute_ladders(&p_seed, None, &points, false, false)
             .unwrap();
         assert_eq!(res.len(), Blake2bHasher::size());
     }
@@ -349,12 +348,12 @@ mod tests {
     #[test]
     fn compute_ladders_decode() {
         let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
-        let p_seed = vec![88u8; 32];
+        let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
 
         let res = params
-            .compute_ladders(p_seed, Some(msg), points, false, false)
+            .compute_ladders(&p_seed, Some(msg), &points, false, false)
             .unwrap();
         assert_eq!(res.len(), Blake2bHasher::size());
     }
@@ -362,12 +361,12 @@ mod tests {
     #[test]
     fn compute_ladders_sign() {
         let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
-        let p_seed = vec![88u8; 32];
+        let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
 
         let res = params
-            .compute_ladders(p_seed, Some(msg), points, false, true)
+            .compute_ladders(&p_seed, Some(msg), &points, false, true)
             .unwrap();
         assert_eq!(res.len(), params.n * params.total);
     }
