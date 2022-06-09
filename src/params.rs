@@ -6,41 +6,41 @@ use sha3::{Digest, Sha3_256};
 use crate::hasher::Hasher;
 
 // Winterhits parameter (I think)
-pub const W: u32 = 256;
+pub const W: usize = 256;
 
 // Secret and public seed size
-pub const SEED_SIZE: u32 = 32;
+pub const SEED_SIZE: usize = 32;
 
-pub const MAX_MSG_SIZE: u32 = 254;
+pub const MAX_MSG_SIZE: usize = 254;
 
 pub struct Params<H: Hasher> {
     // security parameter; size of secret key and ladder points (in bytes)
-    n: u64,
+    n: usize,
 
     // size of message to be signed (after hashing) (in bytes)
-    m: u64,
+    m: usize,
 
     // TODO: just make these generic parameters
     prf_hash: H,
     msg_hash: H,
 
     // total number of ladders
-    total: u64,
+    total: usize,
 }
 
 impl<H: Hasher> Params<H> {
-    fn new(n: u64, m: u64, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
-        if m < 1 || m > MAX_MSG_SIZE as u64 {
+    fn new(n: usize, m: usize, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
+        if m < 1 || m > MAX_MSG_SIZE {
             // TODO: return error
             return None;
         }
 
-        if H::size() < n as usize || H::size() < m as usize {
+        if H::size() < n || H::size() < m {
             // TODO: return error
             return None;
         }
 
-        let mut checksum_ladders = 2;
+        let mut checksum_ladders: usize = 2;
         if m == 1 {
             checksum_ladders = 1;
         }
@@ -70,7 +70,7 @@ impl<H: Hasher> Params<H> {
         p_seed: Vec<u8>,
         msg: Option<Vec<u8>>,
         points: Vec<u8>,
-        chains: Option<Vec<Vec<u8>>>,
+        maybe_chains: Option<Vec<Vec<u8>>>,
         sign: bool,
     ) -> Vec<u8> {
         let start: Vec<u8>;
@@ -84,13 +84,24 @@ impl<H: Hasher> Params<H> {
         let mut value = vec![0u8; self.n as usize];
 
         let mut outputs: Vec<u8>;
-        let has_chains = chains.is_some();
+        let has_chains = maybe_chains.is_some();
 
-        if has_chains {
-            outputs = chains.unwrap()[(W - 1) as usize].clone();
-        } else {
-            outputs = vec![0u8; (self.n * self.total) as usize];
-        }
+        let mut chains = match maybe_chains {
+            Some(chains) => {
+                outputs = chains[(W - 1) as usize].clone();
+                chains
+            }
+            None => {
+                outputs = vec![0u8; (self.n * self.total) as usize];
+                vec![vec![0u8; 0]]
+            }
+        };
+        // if has_chains {
+        //     chains = maybe_chains.unwrap();
+        //     outputs = chains[(W - 1) as usize].clone();
+        // } else {
+        //     outputs = vec![0u8; (self.n * self.total) as usize];
+        // }
 
         let mut t_hasher = Sha3_256::new();
 
@@ -110,11 +121,22 @@ impl<H: Hasher> Params<H> {
                 end = (W - 1) as u8;
             }
 
-            value = self.compute_chain(&p_seed, &value, &random_elements, begin, end);
-            // TODO: if GENERATE()
-
             if !has_chains {
+                (value, _) =
+                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, has_chains);
                 outputs[from..to].clone_from_slice(&value);
+            } else {
+                let (v, intermediate_chains) =
+                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, has_chains);
+                value = v;
+
+                // if generate, then copy each's levels's subsets back
+                let mut k: usize = 0;
+                for j in begin..end {
+                    chains[j as usize + 1][i * self.n..(i + 1) * self.n]
+                        .copy_from_slice(&intermediate_chains[k]);
+                    k += 1;
+                }
             }
 
             if !sign {
@@ -144,30 +166,38 @@ impl<H: Hasher> Params<H> {
         random_elements: &Vec<Vec<u8>>,
         begin: u8,
         end: u8,
-    ) -> Vec<u8> {
-        let mut prev = vec![0u8; self.n as usize];
-        prev.clone_from_slice(input);
+        generate: bool,
+    ) -> (Vec<u8>, Vec<Vec<u8>>) {
+        let mut curr_value = vec![0u8; self.n];
+        curr_value.clone_from_slice(input);
 
-        for i in begin..end {
-            let preimage: Vec<u8> = prev
+        let mut chains = vec![vec![0u8; self.n]; (end - begin) as usize];
+
+        for j in begin..end {
+            let preimage: Vec<u8> = curr_value
                 .iter()
-                .zip(random_elements[i as usize].iter())
+                .zip(random_elements[j as usize].iter())
                 .map(|(&x1, &x2)| x1 ^ x2)
                 .collect();
 
             // TODO: make hasher configurable
-            let mut hasher = Blake2bVar::new(self.n as usize).unwrap();
-            // TODO: write private key "public seed"?
-            hasher.update(&vec![i as u8]);
-            hasher.update(&preimage);
+            //let mut hasher = Blake2bVar::new(self.n as usize).unwrap();
+            let mut hasher = H::new();
+            hasher.write(p_seed.to_vec());
+            hasher.write(vec![j as u8]);
+            hasher.write(preimage);
             let mut buf = vec![0u8; self.n as usize];
-            hasher.finalize_variable(&mut buf).unwrap();
-            prev.clone_from_slice(&buf)
+            hasher.sum(&mut buf);
+            curr_value.clone_from_slice(&buf);
+
+            if generate {
+                chains[j as usize].copy_from_slice(&curr_value);
+            }
         }
 
         let mut result = vec![0u8; self.n as usize];
-        result.clone_from_slice(&prev);
-        result
+        result.clone_from_slice(&curr_value);
+        (result, chains)
     }
 }
 
@@ -184,8 +214,8 @@ fn checksum(msg: &[u8]) -> Vec<u8> {
     vec![upper, lower]
 }
 
-fn compute_random_elements<H: Hasher>(n: u64, p_seed: &[u8]) -> Vec<Vec<u8>> {
-    let mut random_elements = vec![vec![0u8; n as usize]; (W - 1) as usize];
+fn compute_random_elements<H: Hasher>(n: usize, p_seed: &[u8]) -> Vec<Vec<u8>> {
+    let mut random_elements = vec![vec![0u8; n]; (W - 1)];
     let mut buf = vec![0u8; H::size()];
 
     for i in 0..W - 1 {
@@ -233,7 +263,8 @@ mod tests {
             random_elements[i] = x;
         }
 
-        let res = params.compute_chain(&p_seed, &input, &random_elements, 0, total as u8);
+        let (res, _) =
+            params.compute_chain(&p_seed, &input, &random_elements, 0, total as u8, false);
         assert!(res.len() == input.len());
         println!("{:?}", res);
     }
