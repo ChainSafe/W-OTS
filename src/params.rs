@@ -2,6 +2,7 @@ use sha3::{Digest, Sha3_256};
 use thiserror::Error;
 
 use crate::hasher::Hasher;
+use crate::security::ParamsEncoding;
 
 /// Winternits parameter (I think)
 pub const W: usize = 256;
@@ -37,12 +38,26 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
     /// total number of ladders
     pub total: usize,
 
+    /// encoding level
+    encoding: ParamsEncoding,
+
     prf_hash: std::marker::PhantomData<PRFH>,
     msg_hash: std::marker::PhantomData<MSGH>,
 }
 
 impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
-    pub fn new(n: usize, m: usize) -> Option<Params<PRFH, MSGH>> {
+    pub fn new(encoding: ParamsEncoding) -> Option<Params<PRFH, MSGH>> {
+        let (n, m) = match encoding.clone() {
+            ParamsEncoding::Level0 => (20, 24),
+            ParamsEncoding::Level1 => (24, 24),
+            ParamsEncoding::Level2 => (28, 24),
+            ParamsEncoding::Level3 => (32, 24),
+            ParamsEncoding::Consensus => (32, 32),
+            ParamsEncoding::Custom => {
+                return None; // TODO: error
+            }
+        };
+
         if m < 1 || m > MAX_MSG_SIZE {
             // TODO: return error
             return None;
@@ -64,6 +79,33 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             total: m + checksum_ladders,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
+            encoding: encoding,
+        })
+    }
+
+    pub fn new_from_values(n: usize, m: usize) -> Option<Params<PRFH, MSGH>> {
+        if m < 1 || m > MAX_MSG_SIZE {
+            // TODO: return error
+            return None;
+        }
+
+        if PRFH::size() < n || MSGH::size() < m {
+            // TODO: return error
+            return None;
+        }
+
+        let mut checksum_ladders: usize = 2;
+        if m == 1 {
+            checksum_ladders = 1;
+        }
+
+        Some(Params::<PRFH, MSGH> {
+            n: n,
+            m: m,
+            total: m + checksum_ladders,
+            prf_hash: std::marker::PhantomData::<PRFH>,
+            msg_hash: std::marker::PhantomData::<MSGH>,
+            encoding: ParamsEncoding::Custom,
         })
     }
 
@@ -210,6 +252,10 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         result.clone_from_slice(&curr_value);
         (result, chains)
     }
+
+    pub fn get_encoding(&self) -> &ParamsEncoding {
+        &self.encoding
+    }
 }
 
 fn checksum(msg: &[u8]) -> Vec<u8> {
@@ -257,36 +303,38 @@ fn parity(value: &[u8]) -> bool {
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
     use crate::params::{Params, MAX_MSG_SIZE, SEED_SIZE, W};
+    use crate::security;
+    use crate::security::ParamsEncoding;
     use rand_core::{OsRng, RngCore};
 
     #[test]
     fn new_params() {
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 0);
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Custom);
         assert!(params.is_none());
 
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, MAX_MSG_SIZE + 1);
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, MAX_MSG_SIZE + 1);
         assert!(params.is_none());
 
         // test PRF hash size too small
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(64, 32);
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(64, 32);
         assert!(params.is_none());
 
         // test msg hash size too small
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 64);
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 64);
         assert!(params.is_none());
 
         // test one checksum ladder
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 1).unwrap();
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 1).unwrap();
         assert_eq!(params.total, 2);
 
         // test two checksum ladders
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 2).unwrap();
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 2).unwrap();
         assert_eq!(params.total, 4);
     }
 
     #[test]
     fn compute_chain() {
-        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
+        let mut params = security::consensus_params();
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
@@ -307,7 +355,8 @@ mod tests {
 
     #[test]
     fn compute_ladders_generate() {
-        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
+        let mut params =
+            Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
@@ -320,7 +369,8 @@ mod tests {
 
     #[test]
     fn compute_ladders_compute_pubkey() {
-        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
+        let mut params =
+            Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
@@ -332,7 +382,8 @@ mod tests {
 
     #[test]
     fn compute_ladders_decode() {
-        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
+        let mut params =
+            Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
@@ -345,7 +396,8 @@ mod tests {
 
     #[test]
     fn compute_ladders_sign() {
-        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
+        let mut params =
+            Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
