@@ -1,4 +1,4 @@
-use crate::hasher::Hasher;
+use crate::hasher::{Blake2bHasher, Hasher};
 use crate::params::{Params, WotsError, SEED_SIZE};
 
 use rand_core::{OsRng, RngCore};
@@ -6,31 +6,35 @@ use rand_core::{OsRng, RngCore};
 /// Size of WOTS+ public keys
 pub const PK_SIZE: usize = 32;
 
-pub struct Key<H: Hasher> {
+pub struct Key<PRFH: Hasher, MSGH: Hasher> {
     seed: [u8; SEED_SIZE],
     p_seed: [u8; SEED_SIZE],
     chains: Option<Vec<Vec<u8>>>,
     secret_key: Vec<u8>,
     public_key: Option<Vec<u8>>,
-    params: Params<H>,
+    params: Params<PRFH, MSGH>,
+    prf_hash: std::marker::PhantomData<PRFH>,
+    msg_hash: std::marker::PhantomData<MSGH>,
 }
 
-impl<H: Hasher> Key<H> {
-    fn new(params: Params<H>) -> Self {
+impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
+    fn new(params: Params<PRFH, MSGH>) -> Self {
         let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
         let mut p_seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut p_seed);
 
-        let sk = calculate_secret_key(&params, &seed);
+        let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
 
-        Key {
+        Key::<PRFH, MSGH> {
             seed: seed,
             p_seed: p_seed,
             chains: None,
             secret_key: sk,
             public_key: None,
             params: params,
+            prf_hash: std::marker::PhantomData::<PRFH>,
+            msg_hash: std::marker::PhantomData::<MSGH>,
         }
     }
 
@@ -96,11 +100,14 @@ impl<H: Hasher> Key<H> {
     }
 }
 
-fn calculate_secret_key<H: Hasher>(params: &Params<H>, seed: &[u8]) -> Vec<u8> {
+fn calculate_secret_key<PRFH: Hasher, MSGH: Hasher>(
+    params: &Params<PRFH, MSGH>,
+    seed: &[u8],
+) -> Vec<u8> {
     let mut sks = vec![0u8; params.n * params.total];
-    let mut buf = vec![0u8; H::size()];
+    let mut buf = vec![0u8; PRFH::size()];
     for i in 0..params.total {
-        let mut hasher = H::new();
+        let mut hasher = PRFH::new();
         hasher.write(seed.to_vec());
         hasher.write(vec![i as u8]);
         hasher.sum(&mut buf);

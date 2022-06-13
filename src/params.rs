@@ -1,7 +1,4 @@
-use blake2::digest::Update;
-use blake2::Blake2bVar;
 use sha3::{Digest, Sha3_256};
-use std::fmt;
 use thiserror::Error;
 
 use crate::hasher::Hasher;
@@ -30,29 +27,28 @@ pub enum WotsError {
 }
 
 #[derive(Debug)]
-pub struct Params<H: Hasher> {
-    // security parameter; size of secret key and ladder points (in bytes)
+pub struct Params<PRFH: Hasher, MSGH: Hasher> {
+    /// security parameter; size of secret key and ladder points (in bytes)
     pub n: usize,
 
-    // size of message to be signed (after hashing) (in bytes)
+    /// size of message to be signed (after hashing) (in bytes)
     m: usize,
 
-    // TODO: just make these generic parameters
-    prf_hash: H,
-    msg_hash: H,
-
-    // total number of ladders
+    /// total number of ladders
     pub total: usize,
+
+    prf_hash: std::marker::PhantomData<PRFH>,
+    msg_hash: std::marker::PhantomData<MSGH>,
 }
 
-impl<H: Hasher> Params<H> {
-    pub fn new(n: usize, m: usize, prf_hash: H, msg_hash: H) -> Option<Params<H>> {
+impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
+    pub fn new(n: usize, m: usize) -> Option<Params<PRFH, MSGH>> {
         if m < 1 || m > MAX_MSG_SIZE {
             // TODO: return error
             return None;
         }
 
-        if H::size() < n || H::size() < m {
+        if PRFH::size() < n || MSGH::size() < m {
             // TODO: return error
             return None;
         }
@@ -62,18 +58,18 @@ impl<H: Hasher> Params<H> {
             checksum_ladders = 1;
         }
 
-        Some(Params {
+        Some(Params::<PRFH, MSGH> {
             n: n,
             m: m,
-            prf_hash: prf_hash,
-            msg_hash: msg_hash,
             total: m + checksum_ladders,
+            prf_hash: std::marker::PhantomData::<PRFH>,
+            msg_hash: std::marker::PhantomData::<MSGH>,
         })
     }
 
     pub fn msg_hash_and_compute_checksum(&self, msg: &[u8]) -> Vec<u8> {
-        let mut hasher = H::new();
-        let mut msg_buf = vec![0u8; H::size()];
+        let mut hasher = MSGH::new();
+        let mut msg_buf = vec![0u8; MSGH::size()];
         let mut hashed_msg = vec![0u8; self.m as usize];
         hasher.write(msg.to_vec());
         hasher.sum(&mut msg_buf);
@@ -112,7 +108,7 @@ impl<H: Hasher> Params<H> {
             None => vec![0u8; self.total as usize],
         };
 
-        let random_elements = compute_random_elements::<H>(self.n, &p_seed);
+        let random_elements = compute_random_elements::<PRFH>(self.n, &p_seed);
         let mut value = vec![0u8; self.n as usize];
 
         let mut outputs = vec![0u8; self.n * self.total];
@@ -197,9 +193,7 @@ impl<H: Hasher> Params<H> {
                 .map(|(&x1, &x2)| x1 ^ x2)
                 .collect();
 
-            // TODO: make hasher configurable
-            //let mut hasher = Blake2bVar::new(self.n as usize).unwrap();
-            let mut hasher = H::new();
+            let mut hasher = PRFH::new();
             hasher.write(p_seed.to_vec());
             hasher.write(vec![j as u8]);
             hasher.write(preimage);
@@ -232,7 +226,7 @@ fn checksum(msg: &[u8]) -> Vec<u8> {
 }
 
 fn compute_random_elements<H: Hasher>(n: usize, p_seed: &[u8]) -> Vec<Vec<u8>> {
-    let mut random_elements = vec![vec![0u8; n]; (W - 1)];
+    let mut random_elements = vec![vec![0u8; n]; W - 1];
     let mut buf = vec![0u8; H::size()];
 
     for i in 0..W - 1 {
@@ -267,37 +261,32 @@ mod tests {
 
     #[test]
     fn new_params() {
-        let params = Params::new(32, 0, Blake2bHasher::new(), Blake2bHasher::new());
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 0);
         assert!(params.is_none());
 
-        let params = Params::new(
-            32,
-            MAX_MSG_SIZE + 1,
-            Blake2bHasher::new(),
-            Blake2bHasher::new(),
-        );
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, MAX_MSG_SIZE + 1);
         assert!(params.is_none());
 
         // test PRF hash size too small
-        let params = Params::new(64, 32, Blake2bHasher::new(), Blake2bHasher::new());
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(64, 32);
         assert!(params.is_none());
 
         // test msg hash size too small
-        let params = Params::new(32, 64, Blake2bHasher::new(), Blake2bHasher::new());
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 64);
         assert!(params.is_none());
 
         // test one checksum ladder
-        let params = Params::new(32, 1, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 1).unwrap();
         assert_eq!(params.total, 2);
 
         // test two checksum ladders
-        let params = Params::new(32, 2, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 2).unwrap();
         assert_eq!(params.total, 4);
     }
 
     #[test]
     fn compute_chain() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
@@ -318,7 +307,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_generate() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
@@ -331,7 +320,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_compute_pubkey() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
@@ -343,7 +332,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_decode() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
@@ -356,7 +345,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_sign() {
-        let mut params = Params::new(32, 32, Blake2bHasher::new(), Blake2bHasher::new()).unwrap();
+        let mut params = Params::<Blake2bHasher, Blake2bHasher>::new(32, 32).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
