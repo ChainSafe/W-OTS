@@ -1,37 +1,32 @@
-use blake2::digest::{Update, VariableOutput};
+use blake2::digest::Update;
 use blake2::Blake2bVar;
 use sha3::{Digest, Sha3_256};
 use std::fmt;
+use thiserror::Error;
 
 use crate::hasher::Hasher;
 
-// Winternits parameter (I think)
+/// Winternits parameter (I think)
 pub const W: usize = 256;
 
-// Secret and public seed size
+/// Secret and public seed size
 pub const SEED_SIZE: usize = 32;
 
+/// Maximum message size that ca n be signed
 pub const MAX_MSG_SIZE: usize = 254;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum WotsError {
+    #[error("invalid seed size: expected 32")]
     InvalidSeedSize,
+    #[error("invalid message size: must be smaller than 254")]
     InvalidMessageSize,
+    #[error("invalid points size for params; must be n * total")]
     InvalidPointsSize,
+    #[error("must provide message for sign=true")]
     MustProvideMessage,
-}
-
-impl std::error::Error for WotsError {}
-
-impl fmt::Display for WotsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            InvalidSeedSize => write!(f, "invalid seed size: expected 32"),
-            InvalidMessageSize => write!(f, "invalid message size: must be smaller than 254"),
-            InvalidPointsSize => write!(f, "invalid points size for params; must be n * total"),
-            MustProvideMessage => write!(f, "must provide message for sign=true"),
-        }
-    }
+    #[error("chains must be set via generate before calling this function")]
+    ChainsNotSet,
 }
 
 #[derive(Debug)]
