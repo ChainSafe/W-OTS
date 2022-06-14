@@ -15,6 +15,12 @@ pub const MAX_MSG_SIZE: usize = 254;
 
 #[derive(Error, Debug)]
 pub enum WotsError {
+    #[error("invalid m value: must be between 1 and 254")]
+    InvalidMValue,
+    #[error("custom parameters not supported; use Params::new_from_values")]
+    CustomNotSupported,
+    #[error("prf hash size must be less than n and msg hash size must be less than m")]
+    InvalidHasher,
     #[error("invalid seed size: expected 32")]
     InvalidSeedSize,
     #[error("invalid message size: must be smaller than 254")]
@@ -33,7 +39,7 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
     pub n: usize,
 
     /// size of message to be signed (after hashing) (in bytes)
-    m: usize,
+    pub m: usize,
 
     /// total number of ladders
     pub total: usize,
@@ -46,7 +52,7 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
 }
 
 impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
-    pub fn new(encoding: ParamsEncoding) -> Option<Params<PRFH, MSGH>> {
+    pub fn new(encoding: ParamsEncoding) -> Result<Params<PRFH, MSGH>, WotsError> {
         let (n, m) = match encoding.clone() {
             ParamsEncoding::Level0 => (20, 24),
             ParamsEncoding::Level1 => (24, 24),
@@ -54,18 +60,16 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             ParamsEncoding::Level3 => (32, 24),
             ParamsEncoding::Consensus => (32, 32),
             ParamsEncoding::Custom => {
-                return None; // TODO: error
+                return Err(WotsError::CustomNotSupported);
             }
         };
 
         if m < 1 || m > MAX_MSG_SIZE {
-            // TODO: return error
-            return None;
+            return Err(WotsError::InvalidMValue);
         }
 
         if PRFH::size() < n || MSGH::size() < m {
-            // TODO: return error
-            return None;
+            return Err(WotsError::InvalidHasher);
         }
 
         let mut checksum_ladders: usize = 2;
@@ -73,7 +77,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             checksum_ladders = 1;
         }
 
-        Some(Params::<PRFH, MSGH> {
+        Ok(Params::<PRFH, MSGH> {
             n: n,
             m: m,
             total: m + checksum_ladders,
@@ -83,15 +87,13 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         })
     }
 
-    pub fn new_from_values(n: usize, m: usize) -> Option<Params<PRFH, MSGH>> {
+    pub fn new_from_values(n: usize, m: usize) -> Result<Params<PRFH, MSGH>, WotsError> {
         if m < 1 || m > MAX_MSG_SIZE {
-            // TODO: return error
-            return None;
+            return Err(WotsError::InvalidMValue);
         }
 
         if PRFH::size() < n || MSGH::size() < m {
-            // TODO: return error
-            return None;
+            return Err(WotsError::InvalidHasher);
         }
 
         let mut checksum_ladders: usize = 2;
@@ -99,7 +101,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             checksum_ladders = 1;
         }
 
-        Some(Params::<PRFH, MSGH> {
+        Ok(Params::<PRFH, MSGH> {
             n: n,
             m: m,
             total: m + checksum_ladders,
@@ -309,19 +311,19 @@ mod tests {
 
     #[test]
     fn new_params() {
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Custom);
-        assert!(params.is_none());
+        let res = Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Custom);
+        assert!(res.is_err());
 
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, MAX_MSG_SIZE + 1);
-        assert!(params.is_none());
+        let res = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, MAX_MSG_SIZE + 1);
+        assert!(res.is_err());
 
         // test PRF hash size too small
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(64, 32);
-        assert!(params.is_none());
+        let res = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(64, 32);
+        assert!(res.is_err());
 
         // test msg hash size too small
-        let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 64);
-        assert!(params.is_none());
+        let res = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 64);
+        assert!(res.is_err());
 
         // test one checksum ladder
         let params = Params::<Blake2bHasher, Blake2bHasher>::new_from_values(32, 1).unwrap();
