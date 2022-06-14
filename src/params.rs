@@ -4,7 +4,7 @@ use thiserror::Error;
 use crate::hasher::Hasher;
 use crate::security::ParamsEncoding;
 
-/// Winternits parameter (I think)
+/// Winternits parameter
 pub const W: usize = 256;
 
 /// Secret and public seed size
