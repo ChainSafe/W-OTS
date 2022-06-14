@@ -1,4 +1,4 @@
-use crate::hasher::{Blake2bHasher, Hasher};
+use crate::hasher::Hasher;
 use crate::params::{Params, WotsError, MAX_MSG_SIZE, SEED_SIZE};
 
 use rand_core::{OsRng, RngCore};
@@ -7,7 +7,6 @@ use rand_core::{OsRng, RngCore};
 pub const PK_SIZE: usize = 32;
 
 pub struct Key<PRFH: Hasher, MSGH: Hasher> {
-    seed: [u8; SEED_SIZE],
     p_seed: [u8; SEED_SIZE],
     chains: Option<Vec<Vec<u8>>>,
     secret_key: Vec<u8>,
@@ -18,7 +17,7 @@ pub struct Key<PRFH: Hasher, MSGH: Hasher> {
 }
 
 impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
-    fn new(params: Params<PRFH, MSGH>) -> Self {
+    pub fn new(params: Params<PRFH, MSGH>) -> Self {
         let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
         let mut p_seed = [0u8; SEED_SIZE];
@@ -27,7 +26,6 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
 
         Key::<PRFH, MSGH> {
-            seed: seed,
             p_seed: p_seed,
             chains: None,
             secret_key: sk,
@@ -38,7 +36,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         }
     }
 
-    fn generate(&mut self) -> Result<(), WotsError> {
+    pub fn generate(&mut self) -> Result<(), WotsError> {
         if self.chains.is_some() {
             return Ok(());
         }
@@ -52,7 +50,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         Ok(())
     }
 
-    fn public_key(&mut self) -> Result<Vec<u8>, WotsError> {
+    pub fn public_key(&mut self) -> Result<Vec<u8>, WotsError> {
         if self.public_key.is_some() {
             let pk = self.public_key.clone().unwrap();
             return Ok(pk);
@@ -66,7 +64,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         Ok(public_key)
     }
 
-    fn sign(&mut self, msg: &[u8]) -> Result<Vec<u8>, WotsError> {
+    pub fn sign(&mut self, msg: &[u8]) -> Result<Vec<u8>, WotsError> {
         if msg.len() > MAX_MSG_SIZE {
             return Err(WotsError::InvalidMessageSize);
         }
@@ -126,7 +124,7 @@ fn calculate_secret_key<PRFH: Hasher, MSGH: Hasher>(
 
 #[cfg(test)]
 mod tests {
-    use crate::hasher::{Blake2bHasher, Hasher, Sha3_224Hasher, Sha3_256Hasher};
+    use crate::hasher::{Blake2bHasher, Sha3_256Hasher};
     use crate::keys::{Key, PK_SIZE};
     use crate::params::{MAX_MSG_SIZE, SEED_SIZE};
     use crate::security;
