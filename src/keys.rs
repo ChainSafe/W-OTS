@@ -26,11 +26,11 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
 
         Key::<PRFH, MSGH> {
-            p_seed: p_seed,
+            p_seed,
             chains: None,
             secret_key: sk,
             public_key: None,
-            params: params,
+            params,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
         }
@@ -70,7 +70,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         }
 
         if self.chains.is_some() {
-            return self.fast_sign(&msg);
+            return self.fast_sign(msg);
         }
 
         let p_seed = self.p_seed;

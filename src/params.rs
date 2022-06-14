@@ -53,7 +53,7 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
 
 impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
     pub fn new(encoding: ParamsEncoding) -> Result<Params<PRFH, MSGH>, WotsError> {
-        let (n, m) = match encoding.clone() {
+        let (n, m) = match encoding {
             ParamsEncoding::Level0 => (20, 24),
             ParamsEncoding::Level1 => (24, 24),
             ParamsEncoding::Level2 => (28, 24),
@@ -64,7 +64,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             }
         };
 
-        if m < 1 || m > MAX_MSG_SIZE {
+        if !(1..=MAX_MSG_SIZE).contains(&m) {
             return Err(WotsError::InvalidMValue);
         }
 
@@ -78,17 +78,17 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         }
 
         Ok(Params::<PRFH, MSGH> {
-            n: n,
-            m: m,
+            n,
+            m,
             total: m + checksum_ladders,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
-            encoding: encoding,
+            encoding,
         })
     }
 
     pub fn new_from_values(n: usize, m: usize) -> Result<Params<PRFH, MSGH>, WotsError> {
-        if m < 1 || m > MAX_MSG_SIZE {
+        if !(1..=MAX_MSG_SIZE).contains(&m) {
             return Err(WotsError::InvalidMValue);
         }
 
@@ -102,8 +102,8 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         }
 
         Ok(Params::<PRFH, MSGH> {
-            n: n,
-            m: m,
+            n,
+            m,
             total: m + checksum_ladders,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
@@ -152,7 +152,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             None => vec![0u8; self.total as usize],
         };
 
-        let random_elements = compute_random_elements::<PRFH>(self.n, &p_seed);
+        let random_elements = compute_random_elements::<PRFH>(self.n, p_seed);
         let mut value = vec![0u8; self.n as usize];
 
         let mut outputs = vec![0u8; self.n * self.total];
@@ -179,26 +179,22 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
 
             if !generate {
                 (value, _) =
-                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, false);
+                    self.compute_chain(p_seed, &value, &random_elements, begin, end, false);
                 outputs[from..to].copy_from_slice(&value);
             } else {
                 let (v, intermediate_chains) =
-                    self.compute_chain(&p_seed, &value, &random_elements, begin, end, true);
+                    self.compute_chain(p_seed, &value, &random_elements, begin, end, true);
                 value = v;
 
                 // if generate, then copy each's levels's subsets back
-                let mut k: usize = 0;
-                for j in begin..end {
+                for (k, j) in (begin..end).enumerate() {
                     chains[j as usize + 1][i * self.n..(i + 1) * self.n]
                         .copy_from_slice(&intermediate_chains[k]);
-                    k += 1;
                 }
             }
 
-            if !sign {
-                if parity(&value) {
-                    Digest::update(&mut t_hasher, &value);
-                }
+            if !sign && parity(&value) {
+                Digest::update(&mut t_hasher, &value);
             }
         }
 
@@ -220,7 +216,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         &mut self,
         p_seed: &[u8],
         input: &[u8],
-        random_elements: &Vec<Vec<u8>>,
+        random_elements: &[Vec<u8>],
         begin: u8,
         end: u8,
         generate: bool,
@@ -268,7 +264,7 @@ fn checksum(msg: &[u8]) -> Vec<u8> {
     if msg.len() == 1 {
         return vec![sum as u8];
     }
-    let upper = ((sum & 0x0) >> 8) as u8;
+    let upper = ((sum & 0xff00) >> 8) as u8;
     let lower = sum as u8;
     vec![upper, lower]
 }
