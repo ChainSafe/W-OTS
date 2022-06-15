@@ -17,7 +17,7 @@ pub struct Blake2bHasher {
 impl Hasher for Blake2bHasher {
     fn new() -> Blake2bHasher {
         Blake2bHasher {
-            hasher: Blake2bVar::new(32).unwrap(),
+            hasher: Blake2bVar::new(32).expect("instantiating blake2b should not fail"),
         }
     }
 

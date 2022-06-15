@@ -40,23 +40,28 @@ impl From<&ParamsEncoding> for u8 {
 }
 
 pub fn level_0_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
-    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level0).unwrap()
+    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level0)
+        .expect("instantiating level0 params should not fail")
 }
 
 pub fn level_1_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
-    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level1).unwrap()
+    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level1)
+        .expect("instantiating level1 params should not fail")
 }
 
 pub fn level_2_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
-    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level2).unwrap()
+    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level2)
+        .expect("instantiating level2 params should not fail")
 }
 
 pub fn level_3_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
-    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level3).unwrap()
+    Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level3)
+        .expect("instantiating level3 params should not fail")
 }
 
 pub fn consensus_params() -> Params<Blake2bHasher, Sha3_256Hasher> {
-    Params::<Blake2bHasher, Sha3_256Hasher>::new(ParamsEncoding::Consensus).unwrap()
+    Params::<Blake2bHasher, Sha3_256Hasher>::new(ParamsEncoding::Consensus)
+        .expect("instantiating consensus params should not fail")
 }
 
 #[cfg(test)]

@@ -51,8 +51,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
     }
 
     pub fn public_key(&mut self) -> Result<Vec<u8>, WotsError> {
-        if self.public_key.is_some() {
-            let pk = self.public_key.clone().unwrap();
+        if let Some(pk) = self.public_key.clone() {
             return Ok(pk);
         }
 
