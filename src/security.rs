@@ -1,7 +1,7 @@
 use std::convert::From;
 
 use crate::hasher::{Blake2bHasher, Sha3_224Hasher, Sha3_256Hasher};
-use crate::params::Params;
+use crate::params::{Params, WotsError};
 
 #[derive(Debug, Clone)]
 pub enum ParamsEncoding {
@@ -64,9 +64,25 @@ pub fn consensus_params() -> Params<Blake2bHasher, Sha3_256Hasher> {
         .expect("instantiating consensus params should not fail")
 }
 
+pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
+    let mut params = match ParamsEncoding::from(signature[0]) {
+        ParamsEncoding::Level0 => level_0_params(),
+        ParamsEncoding::Level1 => level_1_params(),
+        ParamsEncoding::Level2 => level_2_params(),
+        ParamsEncoding::Level3 => level_3_params(),
+        _ => return Err(WotsError::InvalidParamsEncodingType),
+    };
+
+    params.verify(msg, &signature[1..], public_key)
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::hasher::{Blake2bHasher, Sha3_224Hasher, Sha3_256Hasher};
+    use crate::keys::Key;
+    use crate::params::{MAX_MSG_SIZE, SEED_SIZE};
     use crate::security;
+    use crate::security::verify;
 
     #[test]
     fn params_test() {
@@ -89,5 +105,49 @@ mod tests {
         let params = security::consensus_params();
         assert_eq!(params.n, 32);
         assert_eq!(params.m, 32);
+    }
+
+    #[test]
+    fn verify_consensus_params_should_fail() {
+        let params = security::consensus_params();
+        let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
+        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        key.generate().unwrap();
+
+        // should succeed with ok message
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let res = key.sign(&msg).unwrap();
+        assert_eq!(res.len(), sig_size);
+
+        // should fail to verify with consensus parameters
+        let res = verify(&msg, &res, &key.public_key().unwrap());
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn verify_test_no_generate() {
+        let params = security::level_3_params();
+        let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
+        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let res = key.sign(&msg).unwrap();
+        assert_eq!(res.len(), sig_size);
+
+        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn verify_test_generate() {
+        let params = security::level_3_params();
+        let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
+        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+        key.generate().unwrap();
+
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let res = key.sign(&msg).unwrap();
+        assert_eq!(res.len(), sig_size);
+
+        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
     }
 }

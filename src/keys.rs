@@ -44,7 +44,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         let p_seed = self.p_seed;
         let (public_key, chains) =
             self.params
-                .compute_ladders(&p_seed, None, &self.secret_key, false, false)?;
+                .compute_ladders(&p_seed, None, &self.secret_key, true, false)?;
         self.public_key = Some(public_key);
         self.chains = Some(chains);
         Ok(())

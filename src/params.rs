@@ -2,6 +2,7 @@ use sha3::{Digest, Sha3_256};
 use thiserror::Error;
 
 use crate::hasher::Hasher;
+use crate::keys::PK_SIZE;
 use crate::security::ParamsEncoding;
 
 /// Winternits parameter
@@ -31,6 +32,14 @@ pub enum WotsError {
     MustProvideMessage,
     #[error("chains must be set via generate before calling this function")]
     ChainsNotSet,
+    #[error("invalid public key size: must be 32 bytes")]
+    InvalidPublicKeySize,
+    #[error("invalid signature size: must be n + total + SEED_SIZE")]
+    InvalidSignatureSize,
+    #[error("invalid signature")]
+    InvalidSignature,
+    #[error("params cannot be consensus or custom")]
+    InvalidParamsEncodingType,
 }
 
 #[derive(Debug)]
@@ -114,10 +123,10 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
     pub fn msg_hash_and_compute_checksum(&self, msg: &[u8]) -> Vec<u8> {
         let mut hasher = MSGH::new();
         let mut msg_buf = vec![0u8; MSGH::size()];
-        let mut hashed_msg = vec![0u8; self.m as usize];
+        let mut hashed_msg = vec![0u8; self.m];
         hasher.write(msg.to_vec());
         hasher.sum(&mut msg_buf);
-        hashed_msg[0..self.m as usize].clone_from_slice(&msg_buf[0..self.m as usize]);
+        hashed_msg[0..self.m].clone_from_slice(&msg_buf[0..self.m]);
         hashed_msg.append(&mut checksum(&hashed_msg));
         hashed_msg
     }
@@ -142,6 +151,11 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             return Err(WotsError::MustProvideMessage);
         }
 
+        println!(
+            "compute_ladders p_seed {:?}\n maybe_msg{:?}, points {:?}",
+            p_seed, maybe_msg, points
+        );
+
         let start = match maybe_msg {
             Some(msg) => {
                 if msg.len() > MAX_MSG_SIZE {
@@ -149,11 +163,11 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
                 }
                 self.msg_hash_and_compute_checksum(&msg)
             }
-            None => vec![0u8; self.total as usize],
+            None => vec![0u8; self.total],
         };
 
         let random_elements = compute_random_elements::<PRFH>(self.n, p_seed);
-        let mut value = vec![0u8; self.n as usize];
+        let mut value = vec![0u8; self.n];
 
         let mut outputs = vec![0u8; self.n * self.total];
         let mut chains = vec![vec![0u8; self.n * self.total]; W];
@@ -253,6 +267,39 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
 
     pub fn get_encoding(&self) -> &ParamsEncoding {
         &self.encoding
+    }
+
+    pub fn verify(
+        &mut self,
+        msg: &[u8],
+        signature: &[u8],
+        public_key: &[u8],
+    ) -> Result<(), WotsError> {
+        if public_key.len() != PK_SIZE {
+            return Err(WotsError::InvalidPublicKeySize);
+        }
+
+        let pk = self.decode(msg, signature)?;
+        if public_key != pk {
+            return Err(WotsError::InvalidSignature);
+        }
+
+        Ok(())
+    }
+
+    fn decode(&mut self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
+        if signature.len() != (self.total * self.n) + SEED_SIZE {
+            return Err(WotsError::InvalidSignatureSize);
+        }
+
+        let (pk, _) = self.compute_ladders(
+            &signature[0..SEED_SIZE],
+            Some(msg.to_vec()),
+            &signature[SEED_SIZE..],
+            false,
+            false,
+        )?;
+        Ok(pk)
     }
 }
 
