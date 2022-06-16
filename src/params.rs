@@ -303,7 +303,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
     }
 }
 
-fn checksum(msg: &[u8]) -> Vec<u8> {
+pub fn checksum(msg: &[u8]) -> Vec<u8> {
     let mut sum = ((W - 1) as u16) * (msg.len() as u16);
     for n in msg.iter() {
         sum -= *n as u16;
