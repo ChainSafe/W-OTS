@@ -137,17 +137,17 @@ mod tests {
         verify(&msg, &res, &key.public_key().unwrap()).unwrap();
     }
 
-    // #[test]
-    // fn verify_test_generate() {
-    //     let params = security::level_3_params();
-    //     let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-    //     let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
-    //     key.generate().unwrap();
+    #[test]
+    fn verify_test_generate() {
+        let params = security::level_3_params();
+        let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
+        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+        key.generate().unwrap();
 
-    //     let msg = vec![99u8; MAX_MSG_SIZE];
-    //     let res = key.sign(&msg).unwrap();
-    //     assert_eq!(res.len(), sig_size);
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let res = key.sign(&msg).unwrap();
+        assert_eq!(res.len(), sig_size);
 
-    //     verify(&msg, &res, &key.public_key().unwrap()).unwrap();
-    // }
+        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
+    }
 }
