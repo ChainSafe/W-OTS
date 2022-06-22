@@ -65,15 +65,16 @@ pub fn consensus_params() -> Params<Blake2bHasher, Sha3_256Hasher> {
 }
 
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
-    let params = match ParamsEncoding::from(signature[0]) {
-        ParamsEncoding::Level0 => level_0_params(),
-        ParamsEncoding::Level1 => level_1_params(),
-        ParamsEncoding::Level2 => level_2_params(),
-        ParamsEncoding::Level3 => level_3_params(),
+    match ParamsEncoding::from(signature[0]) {
+        ParamsEncoding::Level0 => level_0_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level1 => level_1_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level2 => level_2_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level3 => level_3_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Consensus => consensus_params().verify(msg, &signature[1..], public_key),
         _ => return Err(WotsError::InvalidParamsEncodingType),
-    };
+    }
 
-    params.verify(msg, &signature[1..], public_key)
+   //params.verify(msg, &signature[1..], public_key)
 }
 
 #[cfg(test)]
