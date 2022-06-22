@@ -1,5 +1,5 @@
 use crate::hasher::Hasher;
-use crate::params::{Params, WotsError, MAX_MSG_SIZE, SEED_SIZE};
+use crate::params::{ComputeLaddersMode, Params, WotsError, MAX_MSG_SIZE, SEED_SIZE};
 
 use rand_core::{OsRng, RngCore};
 
@@ -42,9 +42,12 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         }
 
         let p_seed = self.p_seed;
-        let (public_key, chains) =
-            self.params
-                .compute_ladders(&p_seed, None, &self.secret_key, true, false)?;
+        let (public_key, chains) = self.params.compute_ladders(
+            &p_seed,
+            None,
+            &self.secret_key,
+            ComputeLaddersMode::Generate,
+        )?;
         self.public_key = Some(public_key);
         self.chains = Some(chains);
         Ok(())
@@ -56,9 +59,12 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         }
 
         let p_seed = self.p_seed;
-        let (public_key, _) =
-            self.params
-                .compute_ladders(&p_seed, None, &self.secret_key, false, false)?;
+        let (public_key, _) = self.params.compute_ladders(
+            &p_seed,
+            None,
+            &self.secret_key,
+            ComputeLaddersMode::ComputePublicKey,
+        )?;
         self.public_key = Some(public_key.clone());
         Ok(public_key)
     }
@@ -77,8 +83,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
             &p_seed,
             Some(msg.to_vec()),
             &self.secret_key,
-            false,
-            true,
+            ComputeLaddersMode::Sign,
         )?;
         Ok(self.build_signature(&signature))
     }
@@ -88,9 +93,9 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
         let mut sig = vec![0u8; self.params.n * self.params.total];
         let chains = self.chains.as_ref().ok_or(WotsError::ChainsNotSet)?;
         for i in 0..self.params.total {
-            sig[i * self.params.n..(i + 1) * self.params.n].copy_from_slice(
-                &chains[data[i] as usize][i * self.params.n..(i + 1) * self.params.n],
-            );
+            let start = i * self.params.n;
+            let end = (i + 1) * self.params.n;
+            sig[start..end].copy_from_slice(&chains[data[i] as usize][start..end]);
         }
         Ok(self.build_signature(&sig))
     }
