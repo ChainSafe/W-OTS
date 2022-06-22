@@ -205,7 +205,6 @@ version = "0.1.0"
 dependencies = [
  "blake2",
  "rand",
- "rand_core",
  "sha3",
  "thiserror",
 ]

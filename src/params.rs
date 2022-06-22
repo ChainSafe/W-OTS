@@ -376,7 +376,7 @@ mod tests {
     use crate::params::{ComputeLaddersMode, Params, MAX_MSG_SIZE, SEED_SIZE, W};
     use crate::security;
     use crate::security::ParamsEncoding;
-    use rand_core::{OsRng, RngCore};
+    use rand::{rngs::OsRng, RngCore};
 
     #[test]
     fn new_params() {

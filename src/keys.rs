@@ -1,7 +1,8 @@
 use crate::hasher::Hasher;
 use crate::params::{ComputeLaddersMode, Params, WotsError, MAX_MSG_SIZE, SEED_SIZE};
 
-use rand_core::{OsRng, RngCore};
+#[cfg(feature = "std")]
+use rand::{rngs::OsRng, RngCore};
 
 /// Size of WOTS+ public keys
 pub const PK_SIZE: usize = 32;
@@ -17,16 +18,15 @@ pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
 }
 
 impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
-    pub fn new(params: Params<PRFH, MSGH>) -> Self {
-        let mut seed = [0u8; SEED_SIZE];
-        OsRng.fill_bytes(&mut seed);
-        let mut p_seed = [0u8; SEED_SIZE];
-        OsRng.fill_bytes(&mut p_seed);
-
+    /// Generate new key pair from the provided `seed`.
+    ///
+    /// @WARNING: THIS WILL ONLY BE SECURE IF THE `seed` IS SECURE. If it can be guessed
+    /// by an attacker then they can also derive your key.
+    pub fn from_seed(params: Params<PRFH, MSGH>, seed: [u8; SEED_SIZE]) -> Self {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
 
         Key::<PRFH, MSGH> {
-            p_seed,
+            p_seed: seed,
             chains: None,
             secret_key: sk,
             public_key: None,
@@ -34,6 +34,16 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
         }
+    }
+
+    #[cfg(feature = "std")]
+    pub fn new(params: Params<PRFH, MSGH>) -> Self {
+        let mut seed = [0u8; SEED_SIZE];
+        OsRng.fill_bytes(&mut seed);
+        let mut p_seed = [0u8; SEED_SIZE];
+        OsRng.fill_bytes(&mut p_seed);
+
+        Self::from_seed(params, p_seed)
     }
 
     pub fn generate(&mut self) -> Result<(), WotsError> {
