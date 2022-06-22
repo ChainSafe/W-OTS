@@ -54,7 +54,7 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
     pub total: usize,
 
     /// encoding level
-    encoding: ParamsEncoding,
+    pub encoding: ParamsEncoding,
 
     prf_hash: std::marker::PhantomData<PRFH>,
     msg_hash: std::marker::PhantomData<MSGH>,
@@ -251,9 +251,9 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             hasher.write(p_seed.to_vec());
             hasher.write(vec![j as u8]);
             hasher.write(preimage);
-            let mut buf = vec![0u8; self.n as usize];
+            let mut buf = vec![0u8; PRFH::size()];
             hasher.sum(&mut buf);
-            curr_value.clone_from_slice(&buf);
+            curr_value.clone_from_slice(&buf[0..self.n]);
 
             if generate {
                 chains[j as usize].copy_from_slice(&curr_value);
@@ -325,7 +325,7 @@ fn compute_random_elements<H: Hasher>(n: usize, p_seed: &[u8]) -> Vec<Vec<u8>> {
         hasher.write(p_seed.to_vec());
         hasher.write(vec![(i + 1) as u8]);
         hasher.sum(&mut buf);
-        random_elements[i as usize].clone_from_slice(&buf)
+        random_elements[i as usize].clone_from_slice(&buf[0..n])
     }
 
     random_elements

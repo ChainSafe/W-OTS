@@ -1,6 +1,6 @@
 use std::convert::From;
 
-use crate::hasher::{Blake2bHasher, Sha3_224Hasher, Sha3_256Hasher};
+use crate::hasher::{Blake2bHasher, Hasher, Sha3_224Hasher, Sha3_256Hasher};
 use crate::params::{Params, WotsError};
 
 #[derive(Debug, Clone)]
@@ -38,6 +38,17 @@ impl From<&ParamsEncoding> for u8 {
         }
     }
 }
+
+// pub fn get_params(encoding: ParamsEncoding) -> Result<Params<_, _>, WotsError> {
+//     match encoding {
+//         ParamsEncoding::Level0 => Ok(level_0_params()),
+//         ParamsEncoding::Level1 => Ok(level_1_params()),
+//         ParamsEncoding::Level2 => Ok(level_2_params()),
+//         ParamsEncoding::Level3 => Ok(level_3_params()),
+//         ParamsEncoding::Consensus => Ok(consensus_params()),
+//         ParamsEncoding::Custom => Err(WotsError::CustomNotSupported),
+//     }
+// }
 
 pub fn level_0_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
     Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level0)
@@ -137,17 +148,17 @@ mod tests {
         verify(&msg, &res, &key.public_key().unwrap()).unwrap();
     }
 
-    // #[test]
-    // fn verify_test_generate() {
-    //     let params = security::level_3_params();
-    //     let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-    //     let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
-    //     key.generate().unwrap();
+    #[test]
+    fn verify_test_generate() {
+        let params = security::level_3_params();
+        let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
+        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+        key.generate().unwrap();
 
-    //     let msg = vec![99u8; MAX_MSG_SIZE];
-    //     let res = key.sign(&msg).unwrap();
-    //     assert_eq!(res.len(), sig_size);
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let res = key.sign(&msg).unwrap();
+        assert_eq!(res.len(), sig_size);
 
-    //     verify(&msg, &res, &key.public_key().unwrap()).unwrap();
-    // }
+        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
+    }
 }

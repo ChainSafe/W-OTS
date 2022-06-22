@@ -7,7 +7,7 @@ use rand_core::{OsRng, RngCore};
 pub const PK_SIZE: usize = 32;
 
 pub struct Key<PRFH: Hasher, MSGH: Hasher> {
-    p_seed: [u8; SEED_SIZE],
+    pub p_seed: [u8; SEED_SIZE],
     chains: Option<Vec<Vec<u8>>>,
     secret_key: Vec<u8>,
     public_key: Option<Vec<u8>>,
