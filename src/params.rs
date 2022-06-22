@@ -144,7 +144,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
     }
 
     pub fn compute_ladders(
-        &mut self,
+        &self,
         p_seed: &[u8],
         maybe_msg: Option<Vec<u8>>,
         points: &[u8],
@@ -161,11 +161,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         if mode == ComputeLaddersMode::Sign && maybe_msg.is_none() {
             return Err(WotsError::MustProvideMessage);
         }
-
-        // println!(
-        //     "compute_ladders p_seed {:?}\n maybe_msg {:?}\npoints {:?}",
-        //     p_seed, maybe_msg, points
-        // );
 
         let start = match maybe_msg {
             Some(msg) => {
@@ -195,8 +190,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         let mut chains = vec![vec![0u8; self.n * self.total]; W];
         if mode == ComputeLaddersMode::Generate {
             chains[0].copy_from_slice(points);
-            outputs.copy_from_slice(&chains[W - 1]);
-            //println!("chains before {:?}\n", chains[0]);
+            //outputs.copy_from_slice(&chains[W - 1]);
         }
 
         let mut t_hasher = Sha3_256::new();
@@ -236,9 +230,10 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
                 _ => {
                     value =
                         self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
-                    outputs[from..to].copy_from_slice(&value);
                 }
             };
+
+            outputs[from..to].copy_from_slice(&value);
 
             if mode != ComputeLaddersMode::Sign && parity(&value) {
                 Digest::update(&mut t_hasher, &value);
@@ -252,10 +247,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
             Digest::update(&mut t_hasher, &tweak);
             Digest::update(&mut t_hasher, &outputs);
 
-            // if mode == ComputeLaddersMode::Generate {
-            //     println!("chains after {:?}\n", chains[0]);
-            // }
-
             return Ok((t_hasher.finalize().to_vec(), chains));
         }
 
@@ -265,7 +256,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
 
     // compute_chain returns the result of c(input, random_elements) iterated total times.
     fn compute_chain(
-        &mut self,
+        &self,
         p_seed: &[u8],
         input: &[u8],
         random_elements: &[Vec<u8>],
@@ -301,10 +292,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
             }
         }
 
-        // if maybe_chains.is_some() {
-        //     println!("chains after {:?}", maybe_chains.unwrap());
-        // }
-
         let mut result = vec![0u8; self.n as usize];
         result.clone_from_slice(&curr_value);
         result
@@ -314,12 +301,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         &self.encoding
     }
 
-    pub fn verify(
-        &mut self,
-        msg: &[u8],
-        signature: &[u8],
-        public_key: &[u8],
-    ) -> Result<(), WotsError> {
+    pub fn verify(&self, msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
         if public_key.len() != PK_SIZE {
             return Err(WotsError::InvalidPublicKeySize);
         }
@@ -332,7 +314,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         Ok(())
     }
 
-    fn decode(&mut self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
+    fn decode(&self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
         if signature.len() != (self.total * self.n) + SEED_SIZE {
             return Err(WotsError::InvalidSignatureSize);
         }
@@ -423,7 +405,7 @@ mod tests {
 
     #[test]
     fn compute_chain() {
-        let mut params = security::consensus_params();
+        let params = security::consensus_params();
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
@@ -442,7 +424,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_generate() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
@@ -456,7 +438,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_compute_pubkey() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
@@ -469,7 +451,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_decode() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
@@ -483,7 +465,7 @@ mod tests {
 
     #[test]
     fn compute_ladders_sign() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];

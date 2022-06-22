@@ -41,9 +41,8 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             return Ok(());
         }
 
-        let p_seed = self.p_seed;
         let (public_key, chains) = self.params.compute_ladders(
-            &p_seed,
+            &self.p_seed,
             None,
             &self.secret_key,
             ComputeLaddersMode::Generate,
@@ -58,9 +57,8 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             return Ok(pk);
         }
 
-        let p_seed = self.p_seed;
         let (public_key, _) = self.params.compute_ladders(
-            &p_seed,
+            &self.p_seed,
             None,
             &self.secret_key,
             ComputeLaddersMode::ComputePublicKey,
@@ -78,9 +76,8 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             return self.fast_sign(msg);
         }
 
-        let p_seed = self.p_seed;
         let (signature, _) = self.params.compute_ladders(
-            &p_seed,
+            &self.p_seed,
             Some(msg.to_vec()),
             &self.secret_key,
             ComputeLaddersMode::Sign,

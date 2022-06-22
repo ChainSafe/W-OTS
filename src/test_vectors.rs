@@ -2,7 +2,7 @@
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher, Sha3_224Hasher, Sha3_256Hasher};
     use crate::keys::Key;
-    use crate::params::{checksum, Params, MAX_MSG_SIZE, SEED_SIZE, W};
+    use crate::params::{checksum, Params, SEED_SIZE};
     use crate::security;
     use crate::security::ParamsEncoding;
 
@@ -106,7 +106,7 @@ mod tests {
     }
 
     fn consistency_params_test<PRFH: Hasher + Clone, MSGH: Hasher + Clone>(
-        mut params: Params<PRFH, MSGH>,
+        params: Params<PRFH, MSGH>,
     ) {
         let params_copy = params.clone();
         println!("testing encoding {:?}", params.encoding);

@@ -1,6 +1,6 @@
 use std::convert::From;
 
-use crate::hasher::{Blake2bHasher, Hasher, Sha3_224Hasher, Sha3_256Hasher};
+use crate::hasher::{Blake2bHasher, Sha3_224Hasher, Sha3_256Hasher};
 use crate::params::{Params, WotsError};
 
 #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ pub fn consensus_params() -> Params<Blake2bHasher, Sha3_256Hasher> {
 }
 
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
-    let mut params = match ParamsEncoding::from(signature[0]) {
+    let params = match ParamsEncoding::from(signature[0]) {
         ParamsEncoding::Level0 => level_0_params(),
         ParamsEncoding::Level1 => level_1_params(),
         ParamsEncoding::Level2 => level_2_params(),
