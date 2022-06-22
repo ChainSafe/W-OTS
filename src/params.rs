@@ -210,9 +210,19 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             value.clone_from_slice(&points[from..to]);
 
             match mode {
-                ComputeLaddersMode::Generate => {
+                ComputeLaddersMode::Sign => {
                     begin = 0;
                     end = start[i as usize];
+                }
+                _ => {
+                    // TODO: can begin just be 0 here since start will always be 0s?
+                    begin = start[i as usize];
+                    end = (W - 1) as u8;
+                }
+            };
+
+            match mode {
+                ComputeLaddersMode::Generate => {
                     value = self.compute_chain(
                         p_seed,
                         &value,
@@ -222,15 +232,12 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
                         begin,
                         end,
                     );
-                }
+                },
                 _ => {
-                    // TODO: can begin just be 0 here since start will always be 0s?
-                    begin = start[i as usize];
-                    end = (W - 1) as u8;
                     value =
-                        self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
-                    outputs[from..to].copy_from_slice(&value);
-                }
+                    self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
+                outputs[from..to].copy_from_slice(&value);
+                },
             };
 
             if mode != ComputeLaddersMode::Sign && parity(&value) {
@@ -270,7 +277,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
         let mut curr_value = vec![0u8; self.n];
         curr_value.clone_from_slice(input);
 
-        let mut tmp = vec![vec![0u8; self.n]; (end - begin) as usize];
+        //let mut tmp = vec![vec![0u8; self.n]; (end - begin) as usize];
 
         for j in begin..end {
             let preimage: Vec<u8> = curr_value
