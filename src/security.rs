@@ -39,17 +39,6 @@ impl From<&ParamsEncoding> for u8 {
     }
 }
 
-// pub fn get_params(encoding: ParamsEncoding) -> Result<Params<_, _>, WotsError> {
-//     match encoding {
-//         ParamsEncoding::Level0 => Ok(level_0_params()),
-//         ParamsEncoding::Level1 => Ok(level_1_params()),
-//         ParamsEncoding::Level2 => Ok(level_2_params()),
-//         ParamsEncoding::Level3 => Ok(level_3_params()),
-//         ParamsEncoding::Consensus => Ok(consensus_params()),
-//         ParamsEncoding::Custom => Err(WotsError::CustomNotSupported),
-//     }
-// }
-
 pub fn level_0_params() -> Params<Blake2bHasher, Sha3_224Hasher> {
     Params::<Blake2bHasher, Sha3_224Hasher>::new(ParamsEncoding::Level0)
         .expect("instantiating level0 params should not fail")

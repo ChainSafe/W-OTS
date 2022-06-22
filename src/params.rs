@@ -190,7 +190,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         let mut chains = vec![vec![0u8; self.n * self.total]; W];
         if mode == ComputeLaddersMode::Generate {
             chains[0].copy_from_slice(points);
-            //outputs.copy_from_slice(&chains[W - 1]);
         }
 
         let mut t_hasher = Sha3_256::new();
@@ -209,7 +208,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
                     end = start[i as usize];
                 }
                 _ => {
-                    // TODO: can begin just be 0 here since start will always be 0s?
                     begin = start[i as usize];
                     end = (W - 1) as u8;
                 }
@@ -267,8 +265,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
     ) -> Vec<u8> {
         let mut curr_value = vec![0u8; self.n];
         curr_value.clone_from_slice(input);
-
-        //let mut tmp = vec![vec![0u8; self.n]; (end - begin) as usize];
 
         for j in begin..end {
             let preimage: Vec<u8> = curr_value
