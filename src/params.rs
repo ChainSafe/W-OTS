@@ -54,8 +54,8 @@ pub enum ComputeLaddersMode {
     ComputePublicKey,
 }
 
-#[derive(Debug)]
-pub struct Params<PRFH: Hasher, MSGH: Hasher> {
+#[derive(Debug, Clone)]
+pub struct Params<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     /// security parameter; size of secret key and ladder points (in bytes)
     pub n: usize,
 
@@ -72,7 +72,7 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
     msg_hash: std::marker::PhantomData<MSGH>,
 }
 
-impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
+impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
     pub fn new(encoding: ParamsEncoding) -> Result<Params<PRFH, MSGH>, WotsError> {
         let (n, m) = match encoding {
             ParamsEncoding::Level0 => (20, 24),
@@ -232,12 +232,12 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
                         begin,
                         end,
                     );
-                },
+                }
                 _ => {
                     value =
-                    self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
-                outputs[from..to].copy_from_slice(&value);
-                },
+                        self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
+                    outputs[from..to].copy_from_slice(&value);
+                }
             };
 
             if mode != ComputeLaddersMode::Sign && parity(&value) {

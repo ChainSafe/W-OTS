@@ -6,9 +6,9 @@ use rand_core::{OsRng, RngCore};
 /// Size of WOTS+ public keys
 pub const PK_SIZE: usize = 32;
 
-pub struct Key<PRFH: Hasher, MSGH: Hasher> {
+pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     pub p_seed: [u8; SEED_SIZE],
-    chains: Option<Vec<Vec<u8>>>,
+    pub chains: Option<Vec<Vec<u8>>>,
     secret_key: Vec<u8>,
     public_key: Option<Vec<u8>>,
     params: Params<PRFH, MSGH>,
@@ -16,7 +16,7 @@ pub struct Key<PRFH: Hasher, MSGH: Hasher> {
     msg_hash: std::marker::PhantomData<MSGH>,
 }
 
-impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
+impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
     pub fn new(params: Params<PRFH, MSGH>) -> Self {
         let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
@@ -110,7 +110,7 @@ impl<PRFH: Hasher, MSGH: Hasher> Key<PRFH, MSGH> {
     }
 }
 
-fn calculate_secret_key<PRFH: Hasher, MSGH: Hasher>(
+fn calculate_secret_key<PRFH: Hasher + Clone, MSGH: Hasher + Clone>(
     params: &Params<PRFH, MSGH>,
     seed: &[u8],
 ) -> Vec<u8> {

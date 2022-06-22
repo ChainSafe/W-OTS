@@ -105,13 +105,42 @@ mod tests {
         }
     }
 
-    fn consistency_params_test<PRFH: Hasher, MSGH: Hasher>(params: Params<PRFH, MSGH>) {
-        let encoding = params.encoding.clone();
-        println!("testing encoding {:?}", encoding);
-        let mut key = Key::new(params);
+    fn consistency_params_test<PRFH: Hasher + Clone, MSGH: Hasher + Clone>(
+        mut params: Params<PRFH, MSGH>,
+    ) {
+        let params_copy = params.clone();
+        println!("testing encoding {:?}", params.encoding);
+        let mut key = Key::new(params_copy);
         key.generate().unwrap();
         let signature = key.sign(TEST_DATA).unwrap();
-        assert_eq!(signature[0], u8::from(&encoding));
+        assert_eq!(signature[0], u8::from(&params.encoding));
         assert_eq!(signature[1..1 + SEED_SIZE], key.p_seed);
+
+        let compare = match params.m {
+            32 => TEST_VECTOR_256.to_vec(),
+            28 => TEST_VECTOR_224.to_vec(),
+            24 => TEST_VECTOR_192.to_vec(),
+            _ => {
+                assert!(false);
+                return;
+            }
+        };
+
+        let public_key = key.public_key().unwrap();
+
+        let offset = 1 + SEED_SIZE;
+        let chains = &key.chains.unwrap();
+        for i in 0..params.total {
+            let start = i * params.n;
+            let end = (i + 1) * params.n;
+            assert_eq!(
+                signature[offset + start..offset + end],
+                chains[compare[i] as usize][start..end]
+            );
+        }
+
+        params
+            .verify(TEST_DATA, &signature[1..], &public_key)
+            .unwrap();
     }
 }

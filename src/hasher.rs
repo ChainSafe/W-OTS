@@ -9,7 +9,7 @@ pub trait Hasher {
     fn size() -> usize;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Blake2bHasher {
     hasher: blake2::Blake2bVar,
 }
@@ -34,6 +34,7 @@ impl Hasher for Blake2bHasher {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Sha3_224Hasher {
     hasher: Sha3_224,
 }
@@ -59,6 +60,7 @@ impl Hasher for Sha3_224Hasher {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Sha3_256Hasher {
     hasher: Sha3_256,
 }
