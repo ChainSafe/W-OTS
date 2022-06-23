@@ -10,7 +10,7 @@ pub const PK_SIZE: usize = 32;
 pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     pub p_seed: [u8; SEED_SIZE],
     pub chains: Option<Vec<Vec<u8>>>,
-    secret_key: Vec<u8>,
+    pub secret_key: Vec<u8>,
     public_key: Option<Vec<u8>>,
     params: Params<PRFH, MSGH>,
     prf_hash: std::marker::PhantomData<PRFH>,
@@ -22,11 +22,14 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
     ///
     /// @WARNING: THIS WILL ONLY BE SECURE IF THE `seed` IS SECURE. If it can be guessed
     /// by an attacker then they can also derive your key.
-    pub fn from_seed(params: Params<PRFH, MSGH>, seed: [u8; SEED_SIZE]) -> Self {
+    pub fn from_seed(
+        params: Params<PRFH, MSGH>,
+        seed: [u8; SEED_SIZE],
+        p_seed: [u8; SEED_SIZE],
+    ) -> Self {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
-
         Key::<PRFH, MSGH> {
-            p_seed: seed,
+            p_seed: p_seed,
             chains: None,
             secret_key: sk,
             public_key: None,
@@ -42,8 +45,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
         OsRng.fill_bytes(&mut seed);
         let mut p_seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut p_seed);
-
-        Self::from_seed(params, p_seed)
+        Self::from_seed(params, seed, p_seed)
     }
 
     pub fn generate(&mut self) -> Result<(), WotsError> {

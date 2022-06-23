@@ -74,7 +74,7 @@ pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), Wot
         _ => return Err(WotsError::InvalidParamsEncodingType),
     }
 
-   //params.verify(msg, &signature[1..], public_key)
+    //params.verify(msg, &signature[1..], public_key)
 }
 
 #[cfg(test)]

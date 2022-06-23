@@ -168,9 +168,6 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
                     return Err(WotsError::NoMessageExpected);
                 }
 
-                if msg.len() > MAX_MSG_SIZE {
-                    return Err(WotsError::InvalidMessageSize);
-                }
                 self.msg_hash_and_compute_checksum(&msg)
             }
             None => {
@@ -275,7 +272,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
 
             let mut hasher = PRFH::new();
             hasher.write(p_seed.to_vec());
-            hasher.write(vec![j as u8]);
+            hasher.write(vec![j + 1 as u8]);
             hasher.write(preimage);
             let mut buf = vec![0u8; PRFH::size()];
             hasher.sum(&mut buf);
@@ -360,7 +357,7 @@ fn parity(value: &[u8]) -> bool {
         v ^= v >> 4;
         v ^= v >> 2;
         v ^= v >> 1;
-        count += (v & 1) as i8
+        count += (v & 1) as i64
     }
 
     count % 2 == 1
