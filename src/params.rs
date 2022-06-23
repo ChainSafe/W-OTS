@@ -221,13 +221,12 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
                         &random_elements,
                         Some(&mut chains),
                         i,
-                        begin,
-                        end,
+                        (begin, end),
                     );
                 }
                 _ => {
                     value =
-                        self.compute_chain(p_seed, &value, &random_elements, None, i, begin, end);
+                        self.compute_chain(p_seed, &value, &random_elements, None, i, (begin, end));
                 }
             };
 
@@ -260,13 +259,12 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         random_elements: &[Vec<u8>],
         mut maybe_chains: Option<&mut [Vec<u8>]>,
         idx: usize,
-        begin: u8,
-        end: u8,
+        range: (u8, u8),
     ) -> Vec<u8> {
         let mut curr_value = vec![0u8; self.n];
         curr_value.clone_from_slice(input);
 
-        for j in begin..end {
+        for j in range.0..range.1 {
             let preimage: Vec<u8> = curr_value
                 .iter()
                 .zip(random_elements[j as usize].iter())
@@ -414,7 +412,8 @@ mod tests {
             random_elements[i] = x;
         }
 
-        let res = params.compute_chain(&p_seed, &input, &random_elements, None, 0, 0, total as u8);
+        let res =
+            params.compute_chain(&p_seed, &input, &random_elements, None, 0, (0, total as u8));
         assert_eq!(res.len(), input.len());
     }
 

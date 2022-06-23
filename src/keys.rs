@@ -29,7 +29,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             p_seed: seed,
             chains: None,
             secret_key: sk,
-            public_key: public_key,
+            public_key,
             params,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
