@@ -11,7 +11,7 @@ pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     pub p_seed: [u8; SEED_SIZE],
     pub chains: Option<Vec<Vec<u8>>>,
     pub secret_key: Vec<u8>,
-    public_key: Option<Vec<u8>>,
+    pub public_key: Vec<u8>,
     params: Params<PRFH, MSGH>,
     prf_hash: std::marker::PhantomData<PRFH>,
     msg_hash: std::marker::PhantomData<MSGH>,
@@ -26,21 +26,22 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
         params: Params<PRFH, MSGH>,
         seed: [u8; SEED_SIZE],
         p_seed: [u8; SEED_SIZE],
-    ) -> Self {
+    ) -> Result<Self, WotsError> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
-        Key::<PRFH, MSGH> {
+        let public_key = calculate_public_key(&params, &seed, &sk)?;
+        Ok(Key::<PRFH, MSGH> {
             p_seed: p_seed,
             chains: None,
             secret_key: sk,
-            public_key: None,
+            public_key,
             params,
             prf_hash: std::marker::PhantomData::<PRFH>,
             msg_hash: std::marker::PhantomData::<MSGH>,
-        }
+        })
     }
 
     #[cfg(feature = "std")]
-    pub fn new(params: Params<PRFH, MSGH>) -> Self {
+    pub fn new(params: Params<PRFH, MSGH>) -> Result<Self, WotsError> {
         let mut seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut seed);
         let mut p_seed = [0u8; SEED_SIZE];
@@ -53,33 +54,17 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
             return Ok(());
         }
 
-        let (public_key, chains) = self.params.compute_ladders(
+        let (_, chains) = self.params.compute_ladders(
             &self.p_seed,
             None,
             &self.secret_key,
             ComputeLaddersMode::Generate,
         )?;
-        self.public_key = Some(public_key);
         self.chains = Some(chains);
         Ok(())
     }
 
-    pub fn public_key(&mut self) -> Result<Vec<u8>, WotsError> {
-        if let Some(pk) = self.public_key.clone() {
-            return Ok(pk);
-        }
-
-        let (public_key, _) = self.params.compute_ladders(
-            &self.p_seed,
-            None,
-            &self.secret_key,
-            ComputeLaddersMode::ComputePublicKey,
-        )?;
-        self.public_key = Some(public_key.clone());
-        Ok(public_key)
-    }
-
-    pub fn sign(&mut self, msg: &[u8]) -> Result<Vec<u8>, WotsError> {
+    pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>, WotsError> {
         if msg.len() > MAX_MSG_SIZE {
             return Err(WotsError::InvalidMessageSize);
         }
@@ -135,6 +120,20 @@ fn calculate_secret_key<PRFH: Hasher + Clone, MSGH: Hasher + Clone>(
     sks
 }
 
+fn calculate_public_key<PRFH: Hasher + Clone, MSGH: Hasher + Clone>(
+    params: &Params<PRFH, MSGH>,
+    p_seed: &[u8],
+    secret_key: &[u8],
+) -> Result<Vec<u8>, WotsError> {
+    let (public_key, _) = params.compute_ladders(
+        p_seed,
+        None,
+        secret_key,
+        ComputeLaddersMode::ComputePublicKey,
+    )?;
+    Ok(public_key)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Sha3_256Hasher};
@@ -145,25 +144,24 @@ mod tests {
     #[test]
     fn key_generate() {
         let params = security::consensus_params();
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
         key.generate().unwrap();
     }
 
     #[test]
     fn key_public_key() {
         let params = security::consensus_params();
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
-        let pk = key.public_key().unwrap();
-        assert_eq!(pk.len(), PK_SIZE);
+        let key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
+        assert_eq!(key.public_key.len(), PK_SIZE);
         // TODO: should pubkey size still be 32 even w/ level0 etc. params?
     }
 
     #[test]
     fn key_public_key_generate() {
         let params = security::consensus_params();
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
         key.generate().unwrap();
-        let pk = key.public_key().unwrap();
+        let pk = key.public_key;
         assert_eq!(pk.len(), PK_SIZE);
     }
 
@@ -171,7 +169,7 @@ mod tests {
     fn key_sign() {
         let params = security::consensus_params();
         let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        let key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
 
         // should fail to message too large
         let msg = vec![99u8; MAX_MSG_SIZE + 1];
@@ -188,7 +186,7 @@ mod tests {
     fn key_sign_generate() {
         let params = security::consensus_params();
         let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
         key.generate().unwrap();
 
         // should fail to message too large

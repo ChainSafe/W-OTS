@@ -112,7 +112,7 @@ mod tests {
     ) {
         let params_copy = params.clone();
         println!("testing encoding {:?}", params.encoding);
-        let mut key = Key::new(params_copy);
+        let mut key = Key::new(params_copy).unwrap();
         key.generate().unwrap();
         let signature = key.sign(TEST_DATA).unwrap();
         assert_eq!(signature[0], u8::from(&params.encoding));
@@ -128,8 +128,6 @@ mod tests {
             }
         };
 
-        let public_key = key.public_key().unwrap();
-
         let offset = 1 + SEED_SIZE;
         let chains = &key.chains.unwrap();
         for i in 0..params.total {
@@ -142,7 +140,7 @@ mod tests {
         }
 
         params
-            .verify(TEST_DATA, &signature[1..], &public_key)
+            .verify(TEST_DATA, &signature[1..], &key.public_key)
             .unwrap();
     }
 
@@ -172,8 +170,8 @@ mod tests {
         seed.copy_from_slice(&secret_seed);
         let mut p_seed = [0u8; 32];
         p_seed.copy_from_slice(&public_seed);
-        let mut key = Key::from_seed(security::level_0_params(), seed, p_seed);
+        let key = Key::from_seed(security::level_0_params(), seed, p_seed).unwrap();
         assert_eq!(key.secret_key, expected_secret_key);
-        assert_eq!(key.public_key().unwrap(), expected_public_key);
+        assert_eq!(key.public_key, expected_public_key);
     }
 }
