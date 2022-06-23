@@ -110,7 +110,7 @@ mod tests {
     ) {
         let params_copy = params.clone();
         println!("testing encoding {:?}", params.encoding);
-        let mut key = Key::new(params_copy);
+        let mut key = Key::new(params_copy).unwrap();
         key.generate().unwrap();
         let signature = key.sign(TEST_DATA).unwrap();
         assert_eq!(signature[0], u8::from(&params.encoding));
@@ -126,8 +126,6 @@ mod tests {
             }
         };
 
-        let public_key = key.public_key().unwrap();
-
         let offset = 1 + SEED_SIZE;
         let chains = &key.chains.unwrap();
         for i in 0..params.total {
@@ -140,7 +138,7 @@ mod tests {
         }
 
         params
-            .verify(TEST_DATA, &signature[1..], &public_key)
+            .verify(TEST_DATA, &signature[1..], &key.public_key)
             .unwrap();
     }
 }

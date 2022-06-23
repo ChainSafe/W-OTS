@@ -111,7 +111,7 @@ mod tests {
     fn verify_consensus_params_should_fail() {
         let params = security::consensus_params();
         let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params);
+        let mut key = Key::<Blake2bHasher, Sha3_256Hasher>::new(params).unwrap();
         key.generate().unwrap();
 
         // should succeed with ok message
@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(res.len(), sig_size);
 
         // should fail to verify with consensus parameters
-        let res = verify(&msg, &res, &key.public_key().unwrap());
+        let res = verify(&msg, &res, &key.public_key);
         assert!(res.is_err());
     }
 
@@ -128,26 +128,26 @@ mod tests {
     fn verify_test_no_generate() {
         let params = security::level_3_params();
         let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+        let key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params).unwrap();
 
         let msg = vec![99u8; MAX_MSG_SIZE];
         let res = key.sign(&msg).unwrap();
         assert_eq!(res.len(), sig_size);
 
-        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
+        verify(&msg, &res, &key.public_key).unwrap();
     }
 
     #[test]
     fn verify_test_generate() {
         let params = security::level_3_params();
         let sig_size = (params.n * params.total) + 1 + SEED_SIZE;
-        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params);
+        let mut key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params).unwrap();
         key.generate().unwrap();
 
         let msg = vec![99u8; MAX_MSG_SIZE];
         let res = key.sign(&msg).unwrap();
         assert_eq!(res.len(), sig_size);
 
-        verify(&msg, &res, &key.public_key().unwrap()).unwrap();
+        verify(&msg, &res, &key.public_key).unwrap();
     }
 }
