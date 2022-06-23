@@ -71,10 +71,23 @@ pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), Wot
         ParamsEncoding::Level2 => level_2_params().verify(msg, &signature[1..], public_key),
         ParamsEncoding::Level3 => level_3_params().verify(msg, &signature[1..], public_key),
         ParamsEncoding::Consensus => consensus_params().verify(msg, &signature[1..], public_key),
-        _ => return Err(WotsError::InvalidParamsEncodingType),
+        _ => Err(WotsError::InvalidParamsEncodingType),
     }
+}
 
-    //params.verify(msg, &signature[1..], public_key)
+/// Disallows verification of signatures signed using consensus parameters.
+pub fn verify_no_consensus(
+    msg: &[u8],
+    signature: &[u8],
+    public_key: &[u8],
+) -> Result<(), WotsError> {
+    match ParamsEncoding::from(signature[0]) {
+        ParamsEncoding::Level0 => level_0_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level1 => level_1_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level2 => level_2_params().verify(msg, &signature[1..], public_key),
+        ParamsEncoding::Level3 => level_3_params().verify(msg, &signature[1..], public_key),
+        _ => Err(WotsError::InvalidParamsEncodingType),
+    }
 }
 
 #[cfg(test)]
@@ -83,7 +96,7 @@ mod tests {
     use crate::keys::Key;
     use crate::params::{MAX_MSG_SIZE, SEED_SIZE};
     use crate::security;
-    use crate::security::verify;
+    use crate::security::{verify, verify_no_consensus};
 
     #[test]
     fn params_test() {
@@ -121,7 +134,7 @@ mod tests {
         assert_eq!(res.len(), sig_size);
 
         // should fail to verify with consensus parameters
-        let res = verify(&msg, &res, &key.public_key);
+        let res = verify_no_consensus(&msg, &res, &key.public_key);
         assert!(res.is_err());
     }
 

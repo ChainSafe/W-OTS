@@ -28,9 +28,9 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
         p_seed: [u8; SEED_SIZE],
     ) -> Result<Self, WotsError> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
-        let public_key = calculate_public_key(&params, &seed, &sk)?;
+        let public_key = calculate_public_key(&params, &p_seed, &sk)?;
         Ok(Key::<PRFH, MSGH> {
-            p_seed: p_seed,
+            p_seed,
             chains: None,
             secret_key: sk,
             public_key,

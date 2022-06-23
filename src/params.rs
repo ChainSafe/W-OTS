@@ -267,10 +267,10 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
                 .zip(random_elements[j as usize].iter())
                 .map(|(&x1, &x2)| x1 ^ x2)
                 .collect();
-git
+
             let mut hasher = PRFH::new();
             hasher.write(p_seed.to_vec());
-            hasher.write(vec![j + 1 as u8]);
+            hasher.write(vec![(j + 1) as u8]);
             hasher.write(preimage);
             let mut buf = vec![0u8; PRFH::size()];
             hasher.sum(&mut buf);
