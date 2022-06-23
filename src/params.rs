@@ -2,6 +2,7 @@ use sha3::{Digest, Sha3_256};
 use thiserror::Error;
 
 use crate::hasher::Hasher;
+use crate::keys::PK_SIZE;
 use crate::security::ParamsEncoding;
 
 /// Winternits parameter
@@ -31,10 +32,30 @@ pub enum WotsError {
     MustProvideMessage,
     #[error("chains must be set via generate before calling this function")]
     ChainsNotSet,
+    #[error("invalid public key size: must be 32 bytes")]
+    InvalidPublicKeySize,
+    #[error("invalid signature size: must be n + total + SEED_SIZE")]
+    InvalidSignatureSize,
+    #[error("invalid signature")]
+    InvalidSignature,
+    #[error("params cannot be consensus or custom")]
+    InvalidParamsEncodingType,
+    #[error("message should be None for ComputeLaddersMode::ComputePublicKey or ComputeLaddersMode::Generate")]
+    NoMessageExpected,
+    #[error("expected message for ComputeLaddersMode::Sign or ComputeLaddersMode::Verify")]
+    ExpectedMessage,
 }
 
-#[derive(Debug)]
-pub struct Params<PRFH: Hasher, MSGH: Hasher> {
+#[derive(Debug, PartialEq)]
+pub enum ComputeLaddersMode {
+    Generate,
+    Sign,
+    Verify,
+    ComputePublicKey,
+}
+
+#[derive(Debug, Clone)]
+pub struct Params<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     /// security parameter; size of secret key and ladder points (in bytes)
     pub n: usize,
 
@@ -45,13 +66,13 @@ pub struct Params<PRFH: Hasher, MSGH: Hasher> {
     pub total: usize,
 
     /// encoding level
-    encoding: ParamsEncoding,
+    pub encoding: ParamsEncoding,
 
     prf_hash: std::marker::PhantomData<PRFH>,
     msg_hash: std::marker::PhantomData<MSGH>,
 }
 
-impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
+impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
     pub fn new(encoding: ParamsEncoding) -> Result<Params<PRFH, MSGH>, WotsError> {
         let (n, m) = match encoding {
             ParamsEncoding::Level0 => (20, 24),
@@ -114,21 +135,20 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
     pub fn msg_hash_and_compute_checksum(&self, msg: &[u8]) -> Vec<u8> {
         let mut hasher = MSGH::new();
         let mut msg_buf = vec![0u8; MSGH::size()];
-        let mut hashed_msg = vec![0u8; self.m as usize];
+        let mut hashed_msg = vec![0u8; self.m];
         hasher.write(msg.to_vec());
         hasher.sum(&mut msg_buf);
-        hashed_msg[0..self.m as usize].clone_from_slice(&msg_buf[0..self.m as usize]);
+        hashed_msg[0..self.m].clone_from_slice(&msg_buf[0..self.m]);
         hashed_msg.append(&mut checksum(&hashed_msg));
         hashed_msg
     }
 
     pub fn compute_ladders(
-        &mut self,
+        &self,
         p_seed: &[u8],
         maybe_msg: Option<Vec<u8>>,
         points: &[u8],
-        generate: bool,
-        sign: bool,
+        mode: ComputeLaddersMode,
     ) -> Result<(Vec<u8>, Vec<Vec<u8>>), WotsError> {
         if p_seed.len() != SEED_SIZE {
             return Err(WotsError::InvalidSeedSize);
@@ -138,25 +158,39 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             return Err(WotsError::InvalidPointsSize);
         }
 
-        if sign && maybe_msg.is_none() {
+        if mode == ComputeLaddersMode::Sign && maybe_msg.is_none() {
             return Err(WotsError::MustProvideMessage);
         }
 
         let start = match maybe_msg {
             Some(msg) => {
+                if mode != ComputeLaddersMode::Sign && mode != ComputeLaddersMode::Verify {
+                    return Err(WotsError::NoMessageExpected);
+                }
+
                 if msg.len() > MAX_MSG_SIZE {
                     return Err(WotsError::InvalidMessageSize);
                 }
                 self.msg_hash_and_compute_checksum(&msg)
             }
-            None => vec![0u8; self.total as usize],
+            None => {
+                if mode != ComputeLaddersMode::Generate
+                    && mode != ComputeLaddersMode::ComputePublicKey
+                {
+                    return Err(WotsError::ExpectedMessage);
+                }
+                vec![0u8; self.total]
+            }
         };
 
         let random_elements = compute_random_elements::<PRFH>(self.n, p_seed);
-        let mut value = vec![0u8; self.n as usize];
+        let mut value = vec![0u8; self.n];
 
         let mut outputs = vec![0u8; self.n * self.total];
         let mut chains = vec![vec![0u8; self.n * self.total]; W];
+        if mode == ComputeLaddersMode::Generate {
+            chains[0].copy_from_slice(points);
+        }
 
         let mut t_hasher = Sha3_256::new();
 
@@ -168,42 +202,48 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             let to = ((i + 1) * self.n) as usize;
             value.clone_from_slice(&points[from..to]);
 
-            if sign {
-                begin = 0;
-                end = start[i as usize];
-            } else {
-                // TODO: can begin just be 0 here since start will always be 0s?
-                begin = start[i as usize];
-                end = (W - 1) as u8;
-            }
-
-            if !generate {
-                (value, _) =
-                    self.compute_chain(p_seed, &value, &random_elements, begin, end, false);
-                outputs[from..to].copy_from_slice(&value);
-            } else {
-                let (v, intermediate_chains) =
-                    self.compute_chain(p_seed, &value, &random_elements, begin, end, true);
-                value = v;
-
-                // if generate, then copy each's levels's subsets back
-                for (k, j) in (begin..end).enumerate() {
-                    chains[j as usize + 1][i * self.n..(i + 1) * self.n]
-                        .copy_from_slice(&intermediate_chains[k]);
+            match mode {
+                ComputeLaddersMode::Sign => {
+                    begin = 0;
+                    end = start[i as usize];
                 }
-            }
+                _ => {
+                    begin = start[i as usize];
+                    end = (W - 1) as u8;
+                }
+            };
 
-            if !sign && parity(&value) {
+            match mode {
+                ComputeLaddersMode::Generate => {
+                    value = self.compute_chain(
+                        p_seed,
+                        &value,
+                        &random_elements,
+                        Some(&mut chains),
+                        i,
+                        (begin, end),
+                    );
+                }
+                _ => {
+                    value =
+                        self.compute_chain(p_seed, &value, &random_elements, None, i, (begin, end));
+                }
+            };
+
+            outputs[from..to].copy_from_slice(&value);
+
+            if mode != ComputeLaddersMode::Sign && parity(&value) {
                 Digest::update(&mut t_hasher, &value);
             }
         }
 
-        if !sign {
+        if mode != ComputeLaddersMode::Sign {
             let tweak = t_hasher.finalize();
             let mut t_hasher = Sha3_256::new();
             Digest::update(&mut t_hasher, &p_seed);
             Digest::update(&mut t_hasher, &tweak);
             Digest::update(&mut t_hasher, &outputs);
+
             return Ok((t_hasher.finalize().to_vec(), chains));
         }
 
@@ -213,20 +253,18 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
 
     // compute_chain returns the result of c(input, random_elements) iterated total times.
     fn compute_chain(
-        &mut self,
+        &self,
         p_seed: &[u8],
         input: &[u8],
         random_elements: &[Vec<u8>],
-        begin: u8,
-        end: u8,
-        generate: bool,
-    ) -> (Vec<u8>, Vec<Vec<u8>>) {
+        mut maybe_chains: Option<&mut [Vec<u8>]>,
+        idx: usize,
+        range: (u8, u8),
+    ) -> Vec<u8> {
         let mut curr_value = vec![0u8; self.n];
         curr_value.clone_from_slice(input);
 
-        let mut chains = vec![vec![0u8; self.n]; (end - begin) as usize];
-
-        for j in begin..end {
+        for j in range.0..range.1 {
             let preimage: Vec<u8> = curr_value
                 .iter()
                 .zip(random_elements[j as usize].iter())
@@ -237,26 +275,55 @@ impl<PRFH: Hasher, MSGH: Hasher> Params<PRFH, MSGH> {
             hasher.write(p_seed.to_vec());
             hasher.write(vec![j as u8]);
             hasher.write(preimage);
-            let mut buf = vec![0u8; self.n as usize];
+            let mut buf = vec![0u8; PRFH::size()];
             hasher.sum(&mut buf);
-            curr_value.clone_from_slice(&buf);
+            curr_value.clone_from_slice(&buf[0..self.n]);
 
-            if generate {
-                chains[j as usize].copy_from_slice(&curr_value);
+            if let Some(ref mut chains) = maybe_chains {
+                let from = idx * self.n;
+                let to = (idx + 1) * self.n;
+                chains[j as usize + 1][from..to].copy_from_slice(&curr_value);
             }
         }
 
         let mut result = vec![0u8; self.n as usize];
         result.clone_from_slice(&curr_value);
-        (result, chains)
+        result
     }
 
     pub fn get_encoding(&self) -> &ParamsEncoding {
         &self.encoding
     }
+
+    pub fn verify(&self, msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
+        if public_key.len() != PK_SIZE {
+            return Err(WotsError::InvalidPublicKeySize);
+        }
+
+        let pk = self.decode(msg, signature)?;
+        if public_key != pk {
+            return Err(WotsError::InvalidSignature);
+        }
+
+        Ok(())
+    }
+
+    fn decode(&self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
+        if signature.len() != (self.total * self.n) + SEED_SIZE {
+            return Err(WotsError::InvalidSignatureSize);
+        }
+
+        let (pk, _) = self.compute_ladders(
+            &signature[0..SEED_SIZE],
+            Some(msg.to_vec()),
+            &signature[SEED_SIZE..],
+            ComputeLaddersMode::Verify,
+        )?;
+        Ok(pk)
+    }
 }
 
-fn checksum(msg: &[u8]) -> Vec<u8> {
+pub fn checksum(msg: &[u8]) -> Vec<u8> {
     let mut sum = ((W - 1) as u16) * (msg.len() as u16);
     for n in msg.iter() {
         sum -= *n as u16;
@@ -278,7 +345,7 @@ fn compute_random_elements<H: Hasher>(n: usize, p_seed: &[u8]) -> Vec<Vec<u8>> {
         hasher.write(p_seed.to_vec());
         hasher.write(vec![(i + 1) as u8]);
         hasher.sum(&mut buf);
-        random_elements[i as usize].clone_from_slice(&buf)
+        random_elements[i as usize].clone_from_slice(&buf[0..n])
     }
 
     random_elements
@@ -300,7 +367,7 @@ fn parity(value: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::hasher::{Blake2bHasher, Hasher};
-    use crate::params::{Params, MAX_MSG_SIZE, SEED_SIZE, W};
+    use crate::params::{ComputeLaddersMode, Params, MAX_MSG_SIZE, SEED_SIZE, W};
     use crate::security;
     use crate::security::ParamsEncoding;
     use rand::{rngs::OsRng, RngCore};
@@ -332,7 +399,7 @@ mod tests {
 
     #[test]
     fn compute_chain() {
-        let mut params = security::consensus_params();
+        let params = security::consensus_params();
 
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
@@ -345,21 +412,20 @@ mod tests {
             random_elements[i] = x;
         }
 
-        let (res, _) =
-            params.compute_chain(&p_seed, &input, &random_elements, 0, total as u8, false);
+        let res =
+            params.compute_chain(&p_seed, &input, &random_elements, None, 0, (0, total as u8));
         assert_eq!(res.len(), input.len());
-        println!("{:?}", res);
     }
 
     #[test]
     fn compute_ladders_generate() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
         let res = params
-            .compute_ladders(&p_seed, None, &points, true, false)
+            .compute_ladders(&p_seed, None, &points, ComputeLaddersMode::Generate)
             .unwrap();
         assert_eq!(res.0.len(), Blake2bHasher::size());
         assert_eq!(res.1.len(), W);
@@ -367,41 +433,41 @@ mod tests {
 
     #[test]
     fn compute_ladders_compute_pubkey() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
 
         let res = params
-            .compute_ladders(&p_seed, None, &points, false, false)
+            .compute_ladders(&p_seed, None, &points, ComputeLaddersMode::ComputePublicKey)
             .unwrap();
         assert_eq!(res.0.len(), Blake2bHasher::size());
     }
 
     #[test]
     fn compute_ladders_decode() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
 
         let res = params
-            .compute_ladders(&p_seed, Some(msg), &points, false, false)
+            .compute_ladders(&p_seed, Some(msg), &points, ComputeLaddersMode::Verify)
             .unwrap();
         assert_eq!(res.0.len(), Blake2bHasher::size());
     }
 
     #[test]
     fn compute_ladders_sign() {
-        let mut params =
+        let params =
             Params::<Blake2bHasher, Blake2bHasher>::new(ParamsEncoding::Consensus).unwrap();
         let p_seed = vec![88u8; SEED_SIZE];
         let points = vec![99u8; params.n * params.total];
         let msg = vec![77u8; MAX_MSG_SIZE];
 
         let res = params
-            .compute_ladders(&p_seed, Some(msg), &points, false, true)
+            .compute_ladders(&p_seed, Some(msg), &points, ComputeLaddersMode::Sign)
             .unwrap();
         assert_eq!(res.0.len(), params.n * params.total);
     }
