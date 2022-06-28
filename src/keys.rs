@@ -22,11 +22,15 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
     ///
     /// @WARNING: THIS WILL ONLY BE SECURE IF THE `seed` IS SECURE. If it can be guessed
     /// by an attacker then they can also derive your key.
-    pub fn from_seed(params: Params<PRFH, MSGH>, seed: [u8; SEED_SIZE]) -> Result<Self, WotsError> {
+    pub fn from_seed(
+        params: Params<PRFH, MSGH>,
+        seed: [u8; SEED_SIZE],
+        p_seed: [u8; SEED_SIZE],
+    ) -> Result<Self, WotsError> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
-        let public_key = calculate_public_key(&params, &seed, &sk)?;
+        let public_key = calculate_public_key(&params, &p_seed, &sk)?;
         Ok(Key::<PRFH, MSGH> {
-            p_seed: seed,
+            p_seed,
             chains: None,
             secret_key: sk,
             public_key,
@@ -42,7 +46,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
         OsRng.fill_bytes(&mut seed);
         let mut p_seed = [0u8; SEED_SIZE];
         OsRng.fill_bytes(&mut p_seed);
-        Self::from_seed(params, p_seed)
+        Self::from_seed(params, seed, p_seed)
     }
 
     pub fn generate(&mut self) -> Result<(), WotsError> {
