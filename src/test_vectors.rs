@@ -153,6 +153,7 @@ mod tests {
             signature: Vec<u8>,
         }
 
+        // vectors generated from Go test here: https://github.com/xx-labs/sleeve/blob/main/wots/security_test.go#L170
         let test_cases: Vec<TestCase> = vec![
             TestCase { // consensus params
                 msg: hex::decode("e36756d3590e9277ad44802df50a8ded1fec2a4cc622c7cd0114e6a3b0ce28b08f715e36b197fafb7d63834c4b89d309cb40bad0e85125a5385a6974b2c8190433679d7f601fae6eee2b02f51540e37c5f37dd1f1bf00a986e506b781a08fc2ec9786957d27f2af2c4e649d0cd455b394a8d34995db4fe3395ff7870f037276785f29c7b927ab8374c3144209fed7666acb885300c872057970141bbfb9175fb900755a057ecdee8a97089f330d1982df21cce90cbf878eab26902869f7aa3e1d6ec4a25ab932f74119c53239067231cbd75a86f73f59c61bc95e1f665fd006692df51e60829f70730685455a2c02e0d34a2ee9af65ad39e8c83553f5cce").unwrap(),
