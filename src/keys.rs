@@ -7,6 +7,7 @@ use rand::{rngs::OsRng, RngCore};
 /// Size of WOTS+ public keys
 pub const PK_SIZE: usize = 32;
 
+#[derive(Clone)]
 pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
     pub p_seed: [u8; SEED_SIZE],
     pub chains: Option<Vec<Vec<u8>>>,
