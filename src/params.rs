@@ -305,7 +305,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Params<PRFH, MSGH> {
         Ok(())
     }
 
-    fn decode(&self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
+    pub fn decode(&self, msg: &[u8], signature: &[u8]) -> Result<Vec<u8>, WotsError> {
         if signature.len() != (self.total * self.n) + SEED_SIZE {
             return Err(WotsError::InvalidSignatureSize);
         }
