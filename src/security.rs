@@ -205,11 +205,6 @@ mod tests {
         let msg = vec![99u8; MAX_MSG_SIZE];
         let res = key.sign(&msg).unwrap();
         assert_eq!(res.len(), sig_size);
-
-        println!("{:?}", hex::encode(&msg));
-        println!("{:?}", hex::encode(&res));
-        println!("{:?}", hex::encode(&key.public_key));
-
         verify(&msg, &res, &key.public_key).unwrap();
     }
 }
