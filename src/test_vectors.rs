@@ -203,7 +203,12 @@ mod tests {
         seed.copy_from_slice(&secret_seed);
         let mut p_seed = [0u8; 32];
         p_seed.copy_from_slice(&public_seed);
-        let key = Key::from_seed(security::level_0_params(), seed, p_seed).unwrap();
+        let key = Key::<Blake2bHasher, Sha3_224Hasher>::from_seed(
+            security::level_0_params(),
+            seed,
+            p_seed,
+        )
+        .unwrap();
         assert_eq!(key.secret_key, expected_secret_key);
         assert_eq!(key.public_key, expected_public_key);
     }

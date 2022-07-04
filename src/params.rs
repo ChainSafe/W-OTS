@@ -363,7 +363,7 @@ fn parity(value: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::hasher::{Blake2bHasher, Hasher};
+    use crate::hasher::{Blake2bHasher, Hasher, Sha3_256Hasher};
     use crate::params::{ComputeLaddersMode, Params, MAX_MSG_SIZE, SEED_SIZE, W};
     use crate::security;
     use crate::security::ParamsEncoding;
@@ -396,8 +396,7 @@ mod tests {
 
     #[test]
     fn compute_chain() {
-        let params = security::consensus_params();
-
+        let params = security::consensus_params::<Blake2bHasher, Sha3_256Hasher>();
         let total = 16; //arbitrary
         let input = vec![99u8; 32];
         let p_seed = vec![88u8; SEED_SIZE];
