@@ -42,12 +42,8 @@ impl From<&ParamsEncoding> for u8 {
 impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> From<&ParamsEncoding> for Params<PRFH, MSGH> {
     fn from(item: &ParamsEncoding) -> Self {
         match item {
-            ParamsEncoding::Level0 => level_0_params(),
-            ParamsEncoding::Level1 => level_1_params(),
-            ParamsEncoding::Level2 => level_2_params(),
-            ParamsEncoding::Level3 => level_3_params(),
-            ParamsEncoding::Consensus => consensus_params(),
             ParamsEncoding::Custom => consensus_params(), // TODO
+            _ => Params::new(item.clone()).expect("instantiating level0 params should not fail"),
         }
     }
 }
