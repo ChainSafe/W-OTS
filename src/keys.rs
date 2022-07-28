@@ -9,6 +9,7 @@ pub const PK_SIZE: usize = 32;
 
 #[derive(Clone)]
 pub struct Key<PRFH: Hasher + Clone, MSGH: Hasher + Clone> {
+    pub seed: [u8; SEED_SIZE],
     pub p_seed: [u8; SEED_SIZE],
     pub chains: Option<Vec<Vec<u8>>>,
     pub secret_key: Vec<u8>,
@@ -31,6 +32,7 @@ impl<PRFH: Hasher + Clone, MSGH: Hasher + Clone> Key<PRFH, MSGH> {
         let sk = calculate_secret_key::<PRFH, MSGH>(&params, &seed);
         let public_key = calculate_public_key(&params, &p_seed, &sk)?;
         Ok(Key::<PRFH, MSGH> {
+            seed,
             p_seed,
             chains: None,
             secret_key: sk,
