@@ -69,8 +69,8 @@ pub fn consensus_params<PRFH: Hasher + Clone, MSGH: Hasher + Clone>() -> Params<
 }
 
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
-    if signature.len() == 0 {
-        return Err(WotsError::InvalidSignatureSize)
+    if signature.is_empty() {
+        return Err(WotsError::InvalidSignatureSize);
     }
     match ParamsEncoding::from(signature[0]) {
         ParamsEncoding::Level0 => level_0_params::<Blake2bHasher, Sha3_224Hasher>().verify(
@@ -108,8 +108,8 @@ pub fn verify_no_consensus(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), WotsError> {
-    if signature.len() == 0 {
-        return Err(WotsError::InvalidSignatureSize)
+    if signature.is_empty() {
+        return Err(WotsError::InvalidSignatureSize);
     }
     match ParamsEncoding::from(signature[0]) {
         ParamsEncoding::Level0 => level_0_params::<Blake2bHasher, Sha3_224Hasher>().verify(
