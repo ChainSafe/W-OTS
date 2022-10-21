@@ -69,6 +69,9 @@ pub fn consensus_params<PRFH: Hasher + Clone, MSGH: Hasher + Clone>() -> Params<
 }
 
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> Result<(), WotsError> {
+    if signature.len() == 0 {
+        return Err(WotsError::InvalidSignatureSize)
+    }
     match ParamsEncoding::from(signature[0]) {
         ParamsEncoding::Level0 => level_0_params::<Blake2bHasher, Sha3_224Hasher>().verify(
             msg,
@@ -105,6 +108,9 @@ pub fn verify_no_consensus(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), WotsError> {
+    if signature.len() == 0 {
+        return Err(WotsError::InvalidSignatureSize)
+    }
     match ParamsEncoding::from(signature[0]) {
         ParamsEncoding::Level0 => level_0_params::<Blake2bHasher, Sha3_224Hasher>().verify(
             msg,
@@ -202,5 +208,17 @@ mod tests {
         let res = key.sign(&msg).unwrap();
         assert_eq!(res.len(), sig_size);
         verify(&msg, &res, &key.public_key).unwrap();
+    }
+
+    #[test]
+    fn verify_test_empty_signature() {
+        let params = security::level_0_params();
+        let key = Key::<Blake2bHasher, Sha3_224Hasher>::new(params).unwrap();
+        let msg = vec![99u8; MAX_MSG_SIZE];
+        let sig = vec![0u8; 0];
+        let res = verify(&msg, &sig, &key.public_key);
+        assert!(res.is_err());
+        let res = verify_no_consensus(&msg, &sig, &key.public_key);
+        assert!(res.is_err());
     }
 }
